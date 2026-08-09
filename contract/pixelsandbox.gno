@@ -242,14 +242,18 @@ func FeePerPixel() int64          { return FeePerPixelUgnot }
 func VandalismFeePerPixel() int64 { return VandalismFeeUgnot }
 func MaxBulkPixelsPerTx() int64   { return MaxBulkPixels }
 
-// SetOfficialTarget bulk-registers (or replaces, if called again) the
-// free-to-place design -- owner-only. encoded is "x,y,c;x,y,c;...",
-// matching the CSV-ish convention already used by TopPlacers. Pass an
-// empty string to clear the target entirely (every placement then
-// requires payment).
+// SetOfficialTarget merges entries into the free-to-place design --
+// owner-only, additive rather than replacing. Registering the full
+// ~800-cell logo costs real storage deposit (measured ~0.19 GNOT/cell
+// on testnet), enough that doing it in one transaction risks needing
+// the whole amount upfront in a single call; additive means it can be
+// split across as many affordable calls as needed, called repeatedly
+// over time. encoded is "x,y,c;x,y,c;...", matching the CSV-ish
+// convention already used by TopPlacers. Calling this with a
+// coordinate already in the target just overwrites that one entry's
+// color, same as you'd expect.
 func SetOfficialTarget(cur realm, encoded string) {
 	assertOwner()
-	officialTarget = avl.Tree{}
 	if encoded == "" {
 		return
 	}
@@ -266,6 +270,15 @@ func SetOfficialTarget(cur realm, encoded string) {
 		}
 		officialTarget.Set(key(x, y), c)
 	}
+}
+
+// ClearOfficialTarget wipes the entire free-to-place design -- owner-
+// only. Split out from SetOfficialTarget now that registration is
+// additive, so "start over from nothing" is still possible but isn't
+// the default behavior of every registration call.
+func ClearOfficialTarget(cur realm) {
+	assertOwner()
+	officialTarget = avl.Tree{}
 }
 
 // SubmitCommunityDesign registers a new community-submitted design --
