@@ -75,8 +75,32 @@ const FEE_PER_PIXEL_UGNOT = 100000;
 const VANDALISM_FEE_UGNOT = 1000000;
 document.getElementById("testPkgPath").textContent = TEST_PKG_PATH;
 
+// Content scripts (Adena's included) commonly inject at "document_idle",
+// which can run AFTER this page's own inline <script> has already
+// executed during HTML parsing -- a single synchronous `typeof
+// window.adena` check right at page load can catch it mid-injection and
+// see "undefined" even though it appears a few hundred ms later. Poll
+// briefly instead of checking once (same fix already applied in the
+// main site's index.html).
+function waitForAdena(timeoutMs = 2000, intervalMs = 150) {
+  return new Promise((resolve) => {
+    if (typeof window.adena !== "undefined") { resolve(true); return; }
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if (typeof window.adena !== "undefined") {
+        clearInterval(timer);
+        resolve(true);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, intervalMs);
+  });
+}
+
 async function ensureAdena() {
-  if (typeof window.adena === "undefined") throw new Error("Adena not detected — install it from adena.app, then reload this page.");
+  const available = await waitForAdena();
+  if (!available) throw new Error("Adena not detected after waiting 2s — install it from adena.app, then reload this page. If it's already installed, check chrome://extensions -> Adena -> \"Site access\" is set to allow this page (not \"On click\"), then reload.");
   const establishRes = await window.adena.AddEstablish("GNO Pixels Wallet Test");
   const already = /already connected/i.test(establishRes.message || "");
   if (establishRes.status !== "success" && !already) throw new Error(establishRes.message || "Connection request was not approved.");
