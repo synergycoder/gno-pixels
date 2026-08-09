@@ -169,6 +169,52 @@
 
   .teaser-card p { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 1rem; }
   .teaser-card button { width: 100%; font-size: 0.85rem; padding: 0.6rem 1rem; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .modal {
+    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.75rem; max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;
+  }
+  .modal h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+  .modal-hint { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 1rem; }
+  .modal-close {
+    position: absolute; top: 1rem; right: 1rem; border: none; background: none; color: var(--text-muted);
+    cursor: pointer; font-size: 1.1rem; padding: 0.2rem 0.5rem; border-radius: 4px;
+  }
+  .modal-close:hover { background: var(--border-soft); color: var(--text); }
+  .field-row { margin: 1rem 0; font-size: 0.85rem; color: var(--text-muted); }
+  .field-row input[type="range"] { width: 100%; }
+  .trace-canvas, .preview-canvas {
+    image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px;
+    max-width: 100%; display: block; margin: 1rem 0; cursor: crosshair; background: #000;
+  }
+  .modal .primary-btn {
+    padding: 0.65rem 1.3rem; border-radius: 8px; border: none; background: var(--accent);
+    color: #fff; cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 700;
+  }
+  .modal .primary-btn:hover { background: var(--accent-strong); }
+  .modal button:disabled { opacity: 0.5; cursor: default; }
+  .custom-warning { color: #f87171; }
+  .tab-row { display: flex; gap: 0.5rem; margin-bottom: 1.1rem; }
+  .tab-btn {
+    flex: 1; padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid var(--border);
+    background: none; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 600;
+  }
+  .tab-btn.active { border-color: var(--accent); color: var(--text); background: rgba(108,92,231,0.12); }
+  #customTextInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; }
+  #customDesignName { width: 100%; padding: 0.5rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.9rem; }
+
+  .community-design-card {
+    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.9rem 1.1rem; margin: 0 0 0.9rem;
+  }
+  .community-design-card:last-child { margin-bottom: 0; }
+  .community-design-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.4rem; }
+  .community-design-meta { font-size: 0.78rem; color: var(--text-muted); margin: 0.3rem 0 0.6rem; }
+  .community-design-card .help-btn { width: 100%; padding: 0.5rem 1rem; font-size: 0.85rem; }
 </style>
 </head>
 <body>
@@ -201,8 +247,8 @@
 <aside class="sidebar sidebar-left">
   <h2>🖼️ Your own canvas</h2>
   <div class="sidebar-card teaser-card">
-    <p>Upload an image, we trace it into a new pixel-art target, and the community helps place it — the same way everyone's helping finish the gno.land logo now. Coming soon.</p>
-    <button type="button" disabled>Upload an image</button>
+    <p>Upload an image, we trace it into pixel art, you position it on the board, and pay per pixel to place it — <span id="customFeeNote">0.1 GNOT/pixel</span> for open space, free if it happens to match the official design.</p>
+    <button type="button" id="uploadImageBtn" disabled>Checking availability…</button>
   </div>
 </aside>
 
@@ -216,6 +262,11 @@
   <div class="help-progress-wrap"><div class="help-progress-fill" id="helpProgressFill" style="width:0%"></div></div>
   <button class="help-btn" id="helpBtn">Place the next pixel for me</button>
   <p class="status" id="helpStatus"></p>
+</div>
+
+<div id="communityDesignsSection" style="display:none">
+  <h2 style="font-size:1rem; margin: 1.5rem 0 0.75rem; text-align:center;">🎨 Community-submitted designs</h2>
+  <div id="communityDesignsList"></div>
 </div>
 
 <div id="app" style="display:none">
@@ -250,6 +301,48 @@
   </div>
 </aside>
 
+</div>
+
+<div class="modal-backdrop" id="customModalBackdrop" style="display:none">
+  <div class="modal" id="customModal">
+    <button class="modal-close" id="customModalClose" type="button" title="Close">✕</button>
+    <h2>Your own canvas</h2>
+
+    <div id="customStep1">
+      <div class="tab-row">
+        <button type="button" class="tab-btn active" id="customTabImage">Upload an image</button>
+        <button type="button" class="tab-btn" id="customTabText">Type text</button>
+      </div>
+
+      <div id="customImagePane">
+        <p class="modal-hint">Upload an image — it's traced into pixel art using the board's own 9-color palette, right here in your browser (nothing is uploaded anywhere).</p>
+        <input type="file" id="customFileInput" accept="image/*">
+        <div class="field-row">
+          <label for="customWidthSlider">Width: <span id="customWidthLabel">24</span> cells (height follows the image's aspect ratio)</label>
+          <input type="range" id="customWidthSlider" min="4" max="48" value="24">
+        </div>
+      </div>
+
+      <div id="customTextPane" style="display:none">
+        <p class="modal-hint">Type whatever you want to spell out — traced in the currently-selected palette color.</p>
+        <input type="text" id="customTextInput" maxlength="24" placeholder="e.g. HELLO WORLD">
+      </div>
+
+      <canvas id="customTraceCanvas" class="trace-canvas" style="display:none"></canvas>
+      <p class="status" id="customTraceStatus"></p>
+      <button type="button" class="primary-btn" id="customNextBtn" disabled>Next: position it →</button>
+    </div>
+
+    <div id="customStep2" style="display:none">
+      <p class="modal-hint">Click on the board to position your design (drag the header if you need to move this dialog).</p>
+      <canvas id="customPreviewCanvas" class="preview-canvas"></canvas>
+      <div class="field-row"><label for="customDesignName">Give it a name (shown to the community)</label><input type="text" id="customDesignName" maxlength="60" placeholder="e.g. Our team logo"></div>
+      <p class="status" id="customCostSummary"></p>
+      <button type="button" class="primary-btn" id="customSubmitBtn">Submit for the community to fill in</button>
+      <button type="button" id="customBackBtn">← back</button>
+      <p class="status" id="customSubmitStatus"></p>
+    </div>
+  </div>
 </div>
 
 <footer class="site-footer">
@@ -733,10 +826,16 @@ async function placePixel(x, y, colorIndex, statusElOverride) {
   try {
     const address = await ensureAdenaConnected();
     applyConnectedUI(address);
+    // Fee-aware only once the deployed realm is confirmed to support
+    // FeePerPixel/pixelFee (see loadCustomCanvasConfig) -- the currently
+    // live realm predates that entirely, and attaching ugnot to a call
+    // it has no logic to spend would just strand real testnet funds in
+    // its balance for nothing.
+    const feeUgnot = feesSupported ? pixelFeeLocal(x, y, colorIndex) : 0;
     const res = await window.adena.DoContract({
       messages: [{
         type: "/vm.m_call",
-        value: { caller: address, send: "", pkg_path: PIXEL_REALM_PATH, func: "SetPixel", args: [String(x), String(y), String(colorIndex)] },
+        value: { caller: address, send: feeUgnot > 0 ? `${feeUgnot}ugnot` : "", pkg_path: PIXEL_REALM_PATH, func: "SetPixel", args: [String(x), String(y), String(colorIndex)] },
       }],
       networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
     });
@@ -784,6 +883,430 @@ async function loadLeaderboard() {
   }
 }
 
+// ---------- custom canvas (upload an image, trace it, place it) ----------
+//
+// FeePerPixel/VandalismFeePerPixel/MaxBulkPixelsPerTx/SetPixels only
+// exist on realms deployed after this feature was added -- the
+// currently-live pixelsandbox predates them, same situation as
+// TopPlacers above, so this whole panel stays disabled with an
+// explanatory label until loadCustomCanvasConfig() succeeds.
+let customFeePerPixel = 100000; // ugnot -- overwritten from chain once available
+let customVandalismFee = 1000000;
+let customMaxBulk = 10;
+let feesSupported = false; // true once loadCustomCanvasConfig() confirms the deployed realm has fee/pixelFee logic
+let customTracedPixels = []; // [{dx, dy, c}], relative to the traced image's own top-left
+let customTraceWidth = 0, customTraceHeight = 0;
+let customOrigin = { x: 0, y: 0 };
+// 5x7 block font, uppercase + digits + a little punctuation -- enough
+// for arbitrary short typed labels. Input is uppercased before tracing
+// so lowercase letters map onto the same glyphs; unsupported
+// characters fall back to a blank space rather than erroring.
+const FONT5X7 = {
+  A: [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+  B: ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
+  C: [".####", "#....", "#....", "#....", "#....", "#....", ".####"],
+  D: ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."],
+  E: ["#####", "#....", "#....", "####.", "#....", "#....", "#####"],
+  F: ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
+  G: [".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".###."],
+  H: ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+  I: ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####"],
+  J: ["..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##.."],
+  K: ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"],
+  L: ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
+  M: ["#...#", "##.##", "#.#.#", "#...#", "#...#", "#...#", "#...#"],
+  N: ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
+  O: [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+  P: ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
+  Q: [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"],
+  R: ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
+  S: [".####", "#....", "#....", ".###.", "....#", "....#", "####."],
+  T: ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."],
+  U: ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+  V: ["#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."],
+  W: ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"],
+  X: ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"],
+  Y: ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
+  Z: ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
+  0: [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
+  1: ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."],
+  2: [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
+  3: ["####.", "....#", "....#", "..##.", "....#", "....#", "####."],
+  4: ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
+  5: ["#####", "#....", "####.", "....#", "....#", "....#", "####."],
+  6: ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
+  7: ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
+  8: [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
+  9: [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
+  " ": [".....", ".....", ".....", ".....", ".....", ".....", "....."],
+  ".": [".....", ".....", ".....", ".....", ".....", ".....", "..#.."],
+  ",": [".....", ".....", ".....", ".....", ".....", "..#..", ".#..."],
+  "!": ["..#..", "..#..", "..#..", "..#..", "..#..", ".....", "..#.."],
+  "?": [".###.", "#...#", "....#", "...#.", "..#..", ".....", "..#.."],
+  "-": [".....", ".....", ".....", ".###.", ".....", ".....", "....."],
+  "'": ["..#..", ".#...", ".....", ".....", ".....", ".....", "....."],
+};
+
+function traceTextToPixels(text) {
+  const chars = text.toUpperCase().split("");
+  const glyphW = 5, glyphH = 7, gap = 1;
+  const width = chars.length * glyphW + Math.max(0, chars.length - 1) * gap;
+  const pixels = [];
+  chars.forEach((ch, i) => {
+    const glyph = FONT5X7[ch] || FONT5X7[" "];
+    const gx0 = i * (glyphW + gap);
+    for (let row = 0; row < glyphH; row++) {
+      for (let col = 0; col < glyphW; col++) {
+        if (glyph[row][col] === "#") pixels.push({ dx: gx0 + col, dy: row, c: selectedColor || 1 });
+      }
+    }
+  });
+  return { pixels, width, height: glyphH };
+}
+
+let targetByCoord = null; // Map("x,y" -> colorIndex), built once from TARGET_PATTERN
+
+function targetMap() {
+  if (!targetByCoord) {
+    targetByCoord = new Map();
+    for (const [x, y, c] of TARGET_PATTERN) targetByCoord.set(x + "," + y, c);
+  }
+  return targetByCoord;
+}
+
+// Mirrors the contract's own pixelFee() exactly: free if this exact
+// (x, y, c) is the official target, the higher vandalism rate if the
+// cell is part of the target area but this is the wrong color, the
+// normal rate everywhere else.
+function pixelFeeLocal(x, y, c) {
+  const target = targetMap().get(x + "," + y);
+  if (target === undefined) return customFeePerPixel;
+  return target === c ? 0 : customVandalismFee;
+}
+
+async function loadCustomCanvasConfig() {
+  const btn = document.getElementById("uploadImageBtn");
+  try {
+    const [feeRaw, vandalRaw, bulkRaw] = await Promise.all([
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".FeePerPixel()"),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".VandalismFeePerPixel()"),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".MaxBulkPixelsPerTx()"),
+    ]);
+    customFeePerPixel = parseGnoEvalNumber(feeRaw) ?? customFeePerPixel;
+    customVandalismFee = parseGnoEvalNumber(vandalRaw) ?? customVandalismFee;
+    customMaxBulk = parseGnoEvalNumber(bulkRaw) ?? customMaxBulk;
+    document.getElementById("customFeeNote").textContent = formatGnot(customFeePerPixel) + "/pixel";
+    feesSupported = true;
+    btn.disabled = false;
+    btn.textContent = "Upload an image";
+    loadCommunityDesigns();
+  } catch {
+    feesSupported = false;
+    btn.textContent = "Needs the next realm update";
+  }
+}
+
+// ---------- community designs (submitted via the modal above) ----------
+async function loadCommunityDesigns() {
+  const section = document.getElementById("communityDesignsSection");
+  if (!feesSupported) { section.style.display = "none"; return; }
+  try {
+    const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ListCommunityDesigns()");
+    const csv = parseGnoEvalString(raw) || "";
+    if (!csv) { section.style.display = "none"; return; }
+    const rows = csv.split(";").map((entry) => {
+      const [id, name, count] = entry.split(",");
+      return { id, name, count: Number(count) };
+    });
+    const designs = await Promise.all(rows.map(async (r) => {
+      const raw2 = await abciQuery("vm/qeval", PIXEL_REALM_PATH + `.GetCommunityDesign(${JSON.stringify(r.id)})`);
+      const encoded = parseGnoEvalString(raw2) || "";
+      const pixels = encoded ? encoded.split(";").map((e) => e.split(",").map(Number)) : [];
+      return { ...r, pixels };
+    }));
+    section.style.display = "";
+    renderCommunityDesigns(designs);
+  } catch {
+    section.style.display = "none";
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+let communityPendingById = {};
+
+function renderCommunityDesigns(designs) {
+  const list = document.getElementById("communityDesignsList");
+  list.innerHTML = designs.map((d) => {
+    const pending = d.pixels.filter(([x, y, c]) => liveColorAt(x, y) !== c);
+    const done = d.pixels.length - pending.length;
+    communityPendingById[d.id] = pending;
+    const pct = d.pixels.length ? Math.round((done / d.pixels.length) * 100) : 0;
+    return `
+      <div class="community-design-card">
+        <div class="community-design-name">${escapeHtml(d.name || "(untitled)")}</div>
+        <div class="help-progress-wrap"><div class="help-progress-fill" style="width:${pct}%"></div></div>
+        <div class="community-design-meta">${done} / ${d.pixels.length} placed</div>
+        <button type="button" class="help-btn community-help-btn" data-id="${d.id}" ${pending.length === 0 ? "disabled" : ""}>${pending.length === 0 ? "Done! 🎉" : "Help place a pixel"}</button>
+      </div>`;
+  }).join("");
+  list.querySelectorAll(".community-help-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const pending = communityPendingById[btn.dataset.id] || [];
+      if (!pending.length) return;
+      const [x, y, color] = pending[Math.floor(Math.random() * pending.length)];
+      scrollCellIntoView(x, y);
+      await placePixel(x, y, color);
+    });
+  });
+}
+
+function hexToRgb(hex) {
+  const v = parseInt(hex.slice(1), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function nearestPaletteIndex(r, g, b) {
+  let best = 0, bestDist = Infinity;
+  paletteColors.forEach((hex, i) => {
+    const [pr, pg, pb] = hexToRgb(hex);
+    const d = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+    if (d < bestDist) { bestDist = d; best = i; }
+  });
+  return best;
+}
+
+// Quantizes img down to targetWidth cells wide (height follows the
+// image's own aspect ratio) and nearest-matches every opaque pixel to
+// the board's live palette -- transparent pixels (alpha < 128) are
+// skipped entirely rather than forced to a color, so an image with a
+// transparent background traces onto just its subject.
+function traceImageToPixels(img, targetWidth) {
+  const aspect = img.naturalHeight / img.naturalWidth;
+  const targetHeight = Math.max(1, Math.round(targetWidth * aspect));
+  const off = document.createElement("canvas");
+  off.width = targetWidth;
+  off.height = targetHeight;
+  const ctx = off.getContext("2d");
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+  const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight);
+  const pixels = [];
+  for (let y = 0; y < targetHeight; y++) {
+    for (let x = 0; x < targetWidth; x++) {
+      const i = (y * targetWidth + x) * 4;
+      if (data[i + 3] < 128) continue;
+      pixels.push({ dx: x, dy: y, c: nearestPaletteIndex(data[i], data[i + 1], data[i + 2]) });
+    }
+  }
+  return { pixels, width: targetWidth, height: targetHeight };
+}
+
+function drawTracePreview() {
+  const canvas = document.getElementById("customTraceCanvas");
+  if (customTraceWidth === 0) { canvas.style.display = "none"; return; }
+  const scale = Math.max(2, Math.min(16, Math.floor(360 / customTraceWidth)));
+  canvas.width = customTraceWidth * scale;
+  canvas.height = customTraceHeight * scale;
+  canvas.style.display = "";
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (const p of customTracedPixels) {
+    ctx.fillStyle = paletteColors[p.c] || "#fff";
+    ctx.fillRect(p.dx * scale, p.dy * scale, scale, scale);
+  }
+}
+
+let customLoadedImage = null;
+let customMode = "image"; // "image" | "text"
+
+function applyTrace(result) {
+  customTracedPixels = result.pixels;
+  customTraceWidth = result.width;
+  customTraceHeight = result.height;
+  drawTracePreview();
+  document.getElementById("customTraceStatus").textContent = `${result.pixels.length} pixels traced (${result.width}×${result.height}).`;
+  document.getElementById("customNextBtn").disabled = result.pixels.length === 0;
+}
+
+function retraceCurrentImage() {
+  if (!customLoadedImage) return;
+  const width = Number(document.getElementById("customWidthSlider").value);
+  applyTrace(traceImageToPixels(customLoadedImage, width));
+}
+
+function retraceCurrentText() {
+  const text = document.getElementById("customTextInput").value.trim();
+  if (!text) {
+    customTracedPixels = [];
+    customTraceWidth = 0;
+    customTraceHeight = 0;
+    drawTracePreview();
+    document.getElementById("customTraceStatus").textContent = "";
+    document.getElementById("customNextBtn").disabled = true;
+    return;
+  }
+  applyTrace(traceTextToPixels(text));
+}
+
+function setCustomMode(mode) {
+  customMode = mode;
+  document.getElementById("customTabImage").classList.toggle("active", mode === "image");
+  document.getElementById("customTabText").classList.toggle("active", mode === "text");
+  document.getElementById("customImagePane").style.display = mode === "image" ? "" : "none";
+  document.getElementById("customTextPane").style.display = mode === "text" ? "" : "none";
+  if (mode === "image") retraceCurrentImage(); else retraceCurrentText();
+}
+document.getElementById("customTabImage").addEventListener("click", () => setCustomMode("image"));
+document.getElementById("customTabText").addEventListener("click", () => setCustomMode("text"));
+
+document.getElementById("customFileInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById("customTraceStatus");
+  statusEl.textContent = "Loading image…";
+  const img = new Image();
+  img.onload = () => {
+    customLoadedImage = img;
+    retraceCurrentImage();
+  };
+  img.onerror = () => { statusEl.textContent = "Couldn't read that file as an image."; };
+  img.src = URL.createObjectURL(file);
+});
+
+document.getElementById("customWidthSlider").addEventListener("input", (e) => {
+  document.getElementById("customWidthLabel").textContent = e.target.value;
+  retraceCurrentImage();
+});
+
+document.getElementById("customTextInput").addEventListener("input", retraceCurrentText);
+
+function drawCustomPreview() {
+  const canvas = document.getElementById("customPreviewCanvas");
+  const scale = Math.max(2, Math.min(10, Math.floor(560 / Math.max(gridWidth, gridHeight))));
+  canvas.width = gridWidth * scale;
+  canvas.height = gridHeight * scale;
+  const ctx = canvas.getContext("2d");
+  for (let y = 0; y < gridHeight; y++) {
+    for (let x = 0; x < gridWidth; x++) {
+      const idx = y * gridWidth + x;
+      ctx.fillStyle = paletteColors[Number(lastSnapshotStr[idx] || 0)] || "#000";
+      ctx.fillRect(x * scale, y * scale, scale, scale);
+    }
+  }
+  ctx.globalAlpha = 0.85;
+  for (const p of customTracedPixels) {
+    const bx = customOrigin.x + p.dx - originX;
+    const by = customOrigin.y + p.dy - originY;
+    if (bx < 0 || by < 0 || bx >= gridWidth || by >= gridHeight) continue;
+    ctx.fillStyle = paletteColors[p.c] || "#fff";
+    ctx.fillRect(bx * scale, by * scale, scale, scale);
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#8274ef";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(
+    (customOrigin.x - originX) * scale, (customOrigin.y - originY) * scale,
+    customTraceWidth * scale, customTraceHeight * scale,
+  );
+}
+
+// Submitting a design doesn't pay for its pixels up front -- it just
+// registers the shape on-chain so everyone (including the submitter)
+// can help fill it in afterward via the community-designs list, paying
+// per pixel as they personally place it. This summary is a preview of
+// what it'll cost the COMMUNITY to finish, not a bill for the submitter.
+function updateCustomCost() {
+  let free = 0, normal = 0, vandal = 0, outOfBounds = 0;
+  for (const p of customTracedPixels) {
+    const x = customOrigin.x + p.dx, y = customOrigin.y + p.dy;
+    if (x < originX || x >= originX + gridWidth || y < originY || y >= originY + gridHeight) { outOfBounds++; continue; }
+    const fee = pixelFeeLocal(x, y, p.c);
+    if (fee === 0) free++;
+    else if (fee === customVandalismFee) vandal++;
+    else normal++;
+  }
+  const totalUgnot = normal * customFeePerPixel + vandal * customVandalismFee;
+  let html =
+    `${customTracedPixels.length} pixels — ${free} already match the official design (free), ${normal} at ${formatGnot(customFeePerPixel)} each` +
+    (vandal ? `, ${vandal} ⚠️ overwrite official cells at ${formatGnot(customVandalismFee)} each` : "") +
+    `<br><b>~${formatGnot(totalUgnot)} total</b> to fill it in completely — shared across everyone who helps, not paid by you now.` +
+    `<br>Submitting just registers the design (a small gas/storage fee), same as any other transaction.`;
+  if (outOfBounds > 0) html += `<br><span class="custom-warning">${outOfBounds} pixel(s) fall outside the board — move your design.</span>`;
+  document.getElementById("customCostSummary").innerHTML = html;
+  document.getElementById("customSubmitBtn").disabled = outOfBounds > 0 || customTracedPixels.length === 0;
+}
+
+document.getElementById("customPreviewCanvas").addEventListener("click", (e) => {
+  const canvas = e.currentTarget;
+  const rect = canvas.getBoundingClientRect();
+  const cellPxOnScreen = rect.width / gridWidth;
+  const cx = Math.floor((e.clientX - rect.left) / cellPxOnScreen);
+  const cy = Math.floor((e.clientY - rect.top) / cellPxOnScreen);
+  customOrigin.x = originX + cx - Math.floor(customTraceWidth / 2);
+  customOrigin.y = originY + cy - Math.floor(customTraceHeight / 2);
+  drawCustomPreview();
+  updateCustomCost();
+});
+
+document.getElementById("customNextBtn").addEventListener("click", () => {
+  customOrigin.x = originX + Math.floor(gridWidth / 2) - Math.floor(customTraceWidth / 2);
+  customOrigin.y = originY + Math.floor(gridHeight / 2) - Math.floor(customTraceHeight / 2);
+  document.getElementById("customStep1").style.display = "none";
+  document.getElementById("customStep2").style.display = "";
+  drawCustomPreview();
+  updateCustomCost();
+});
+
+document.getElementById("customBackBtn").addEventListener("click", () => {
+  document.getElementById("customStep2").style.display = "none";
+  document.getElementById("customStep1").style.display = "";
+});
+
+document.getElementById("customSubmitBtn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("customSubmitStatus");
+  const btn = document.getElementById("customSubmitBtn");
+  const name = document.getElementById("customDesignName").value.trim() || "Untitled design";
+  btn.disabled = true;
+  statusEl.textContent = "Connecting to Adena…";
+  try {
+    const address = await ensureAdenaConnected();
+    applyConnectedUI(address);
+    const encoded = customTracedPixels.map((p) => `${customOrigin.x + p.dx},${customOrigin.y + p.dy},${p.c}`).join(";");
+    statusEl.textContent = "Submitting design…";
+    const res = await window.adena.DoContract({
+      messages: [{
+        type: "/vm.m_call",
+        value: { caller: address, send: "", pkg_path: PIXEL_REALM_PATH, func: "SubmitCommunityDesign", args: [name, encoded] },
+      }],
+      networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
+    });
+    if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
+    statusEl.textContent = "Submitted! It'll show up below as a design the whole community can help fill in. Closing…";
+    setTimeout(() => { closeCustomModal(); loadCommunityDesigns(); }, 2000);
+  } catch (err) {
+    statusEl.textContent = "Failed: " + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function openCustomModal() {
+  document.getElementById("customModalBackdrop").style.display = "";
+  document.getElementById("customStep1").style.display = "";
+  document.getElementById("customStep2").style.display = "none";
+}
+function closeCustomModal() {
+  document.getElementById("customModalBackdrop").style.display = "none";
+}
+document.getElementById("uploadImageBtn").addEventListener("click", openCustomModal);
+document.getElementById("customModalClose").addEventListener("click", closeCustomModal);
+document.getElementById("customModalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "customModalBackdrop") closeCustomModal();
+});
+
 document.getElementById("titleHome").addEventListener("click", () => {
   if (!gridWidth || !gridHeight) return;
   scrollCellIntoView(originX + Math.floor(gridWidth / 2), originY + Math.floor(gridHeight / 2));
@@ -804,6 +1327,7 @@ function pollLive() {
   if (document.visibilityState !== "visible") return;
   loadCanvas();
   loadLeaderboard();
+  loadCommunityDesigns();
 }
 setInterval(pollLive, POLL_INTERVAL_MS);
 document.addEventListener("visibilitychange", () => {
@@ -813,6 +1337,7 @@ document.addEventListener("visibilitychange", () => {
 initDragToPan();
 loadCanvas();
 loadLeaderboard();
+loadCustomCanvasConfig();
 </script>
 
 </body>
