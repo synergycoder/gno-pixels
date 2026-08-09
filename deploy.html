@@ -114,7 +114,7 @@ document.getElementById("deployBtn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Waiting for Adena…";
   statusEl.className = "status";
-  statusEl.textContent = "Building deploy transaction — this shape (/vm.m_addpkg) is documented but I haven't been able to independently verify it against Adena's own source, so if this fails, the exact error below is what we'll debug from.";
+  statusEl.textContent = "Building deploy transaction…";
   try {
     if (!connectedAddress) throw new Error("Connect Adena first.");
     const res = await window.adena.DoContract({
@@ -122,12 +122,19 @@ document.getElementById("deployBtn").addEventListener("click", async () => {
         type: "/vm.m_addpkg",
         value: {
           creator: connectedAddress,
-          deposit: "1ugnot",
           package: {
             name: "pixelsandbox",
             path: pkgPath(connectedAddress),
             files: CONTRACT_FILES,
           },
+          // Adena's own MsgAddPackage encoder (adena-module/src/utils/
+          // messages.ts) reads creator/package/max_deposit -- there is
+          // no "deposit" field. An earlier version of this page sent
+          // "deposit" instead, which Adena silently ignored (defaulting
+          // max_deposit to ""), and the tx came back as a chain-level
+          // /std.UnknownRequestError. Verified against Adena's real
+          // source this time, not just docs.adena.app.
+          max_deposit: "",
         },
       }],
       networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
