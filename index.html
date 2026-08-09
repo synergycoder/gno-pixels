@@ -30,8 +30,22 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg); color: var(--text);
-    max-width: 760px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
-    line-height: 1.5;
+    margin: 0; line-height: 1.5;
+  }
+  .layout {
+    display: flex; justify-content: center; align-items: flex-start; gap: 1.75rem;
+    max-width: 1300px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
+  }
+  .page { flex: 0 1 760px; min-width: 0; max-width: 760px; }
+  .sidebar {
+    display: none; flex: 0 0 260px; width: 260px;
+    position: sticky; top: 2.5rem;
+  }
+  @media (min-width: 1150px) { .sidebar { display: block; } }
+  .sidebar h2 { font-size: 0.95rem; margin: 0 0 0.9rem; }
+  .sidebar-card {
+    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.25rem;
   }
   header { text-align: center; margin-bottom: 2rem; }
   header h1 {
@@ -106,9 +120,32 @@
 
   footer { text-align: center; margin-top: 3rem; font-size: 0.8rem; color: var(--text-muted); }
   footer a { color: var(--accent); }
+
+  .leaderboard { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
+  .leaderboard li { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0; border-bottom: 1px solid var(--border-soft); }
+  .leaderboard li:last-child { border-bottom: none; }
+  .leaderboard .rank { flex: 0 0 1.6rem; color: var(--text-muted); font-weight: 700; }
+  .leaderboard .addr { flex: 1; font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .leaderboard .count { flex: 0 0 auto; color: var(--accent); font-weight: 700; }
+  .leaderboard .muted { color: var(--text-muted); font-size: 0.82rem; }
+
+  .teaser-card p { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 1rem; }
+  .teaser-card button { width: 100%; font-size: 0.85rem; padding: 0.6rem 1rem; }
 </style>
 </head>
 <body>
+
+<div class="layout">
+
+<aside class="sidebar sidebar-left">
+  <h2>🖼️ Your own canvas</h2>
+  <div class="sidebar-card teaser-card">
+    <p>Upload an image, we trace it into a new pixel-art target, and the community helps place it — the same way everyone's helping finish the gno.land logo now. Coming soon.</p>
+    <button type="button" disabled>Upload an image</button>
+  </div>
+</aside>
+
+<div class="page">
 
 <header>
   <h1><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
@@ -158,6 +195,17 @@
 <footer>
   Part of the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> family — an independent, community-built tool, not affiliated with the gno.land team.
 </footer>
+
+</div>
+
+<aside class="sidebar sidebar-right">
+  <h2>🏆 Top contributors</h2>
+  <div class="sidebar-card">
+    <ol class="leaderboard" id="leaderboard"><li class="muted">Loading…</li></ol>
+  </div>
+</aside>
+
+</div>
 
 <script src="target_pattern.js"></script>
 <script>
@@ -590,8 +638,42 @@ async function placePixel(x, y, colorIndex, statusElOverride) {
   }
 }
 
+// ---------- leaderboard ----------
+//
+// TopPlacers() only exists on realms deployed after this feature was
+// added -- the currently-live pixelsandbox predates it, so this fails
+// with a plain "unknown function" chain error on that realm. Treated
+// as an expected, quiet state (not logged as a real error) rather than
+// blocking the rest of the page, since the leaderboard is a bonus
+// panel, not core functionality.
+async function loadLeaderboard() {
+  const el = document.getElementById("leaderboard");
+  try {
+    const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".TopPlacers(10)");
+    const csv = parseGnoEvalString(raw) || "";
+    if (!csv) {
+      el.innerHTML = `<li class="muted">No placements yet — be the first.</li>`;
+      return;
+    }
+    const rows = csv.split(";").map(pair => {
+      const [addr, count] = pair.split(",");
+      return { addr, count: Number(count) };
+    });
+    el.innerHTML = rows.map((r, i) => `
+      <li>
+        <span class="rank">${i + 1}</span>
+        <span class="addr" title="${r.addr}">${r.addr.slice(0, 6)}…${r.addr.slice(-4)}</span>
+        <span class="count">${r.count}</span>
+      </li>
+    `).join("");
+  } catch (err) {
+    el.innerHTML = `<li class="muted">Leaderboard needs the next realm update.</li>`;
+  }
+}
+
 initDragToPan();
 loadCanvas();
+loadLeaderboard();
 </script>
 
 </body>

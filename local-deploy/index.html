@@ -202,6 +202,11 @@ async function pollBatch() {
   if (b.running) {
     btn.disabled = true;
     btn.textContent = `Running… (${b.completed}/${b.total})`;
+    // A page load (fresh tab, or a reload while a batch is already in
+    // flight) only ever calls pollBatch() once on its own -- without
+    // this, that single snapshot would just sit frozen on screen even
+    // though the server keeps making real progress behind it.
+    if (!pollTimer) pollTimer = setInterval(pollBatch, 2000);
   } else {
     btn.disabled = false;
     btn.textContent = "Start prepopulating";

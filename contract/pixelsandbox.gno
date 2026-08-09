@@ -56,6 +56,7 @@ var (
 	placedBy        avl.Tree
 	placedAtHeight  avl.Tree
 	lastPlacedBlock avl.Tree
+	placementCounts avl.Tree // address.String() -> int64, total successful placements (leaderboard)
 
 	totalPlacements int64
 	occupiedCells   int64
@@ -141,6 +142,18 @@ func recordPlacement(x, y, colorIndex int64, placer address, height int64) {
 	}
 	placedBy.Set(k, placer.String())
 	placedAtHeight.Set(k, height)
+	bumpPlacementCount(placer)
+}
+
+// bumpPlacementCount counts every successful placement action (including
+// recolors and erasures of an existing cell) toward the leaderboard --
+// simpler and more transparent than trying to track "cells currently
+// attributed to this address", which is a fuzzy concept on a canvas
+// anyone can recolor.
+func bumpPlacementCount(placer address) {
+	k := placer.String()
+	count, _ := placementCounts.Get(k).(int64)
+	placementCounts.Set(k, count+1)
 }
 
 func SetPixel(cur realm, x, y, colorIndex int64) {
@@ -208,6 +221,46 @@ func OccupiedCells() int64   { return occupiedCells }
 func ExpansionsCount() int64 { return expansionsCount }
 
 func PaletteCSV() string { return strings.Join(palette, ",") }
+
+type placerCount struct {
+	addr  string
+	count int64
+}
+
+// TopPlacers returns up to n "address,count" pairs, semicolon-separated,
+// sorted by count descending -- the leaderboard. Iterated fresh on every
+// call rather than kept pre-sorted, since contributor counts are small
+// enough (real participants, not per-pixel) for a plain insertion sort
+// to be cheap regardless of how large the canvas itself grows. Gno's
+// "sort" package predates Go's generics-based sort.Slice, so this is
+// hand-rolled rather than using sort.Interface for a one-off local type.
+func TopPlacers(n int64) string {
+	var entries []placerCount
+	placementCounts.Iterate("", "", func(k string, v any) bool {
+		entries = append(entries, placerCount{k, v.(int64)})
+		return false
+	})
+	for i := 1; i < len(entries); i++ {
+		cur := entries[i]
+		j := i - 1
+		for j >= 0 && entries[j].count < cur.count {
+			entries[j+1] = entries[j]
+			j--
+		}
+		entries[j+1] = cur
+	}
+	if n >= 0 && int64(len(entries)) > n {
+		entries = entries[:n]
+	}
+	var b strings.Builder
+	for i, e := range entries {
+		if i > 0 {
+			b.WriteString(";")
+		}
+		b.WriteString(e.addr + "," + strconv.FormatInt(e.count, 10))
+	}
+	return b.String()
+}
 
 func CooldownRemaining(addr address) int64 {
 	last, ok := lastPlacedBlock.Get(addr.String()).(int64)
