@@ -67,6 +67,20 @@
 
 <hr>
 
+<h1>Send GNOT</h1>
+<p>Plain <code>gnokey maketx send</code> — for when your wallet's own UI (e.g. Adena) has no preset for <code>sapphire-1</code> and won't let you point its send screen at a custom RPC. Uses the same keyring home / key name / password fields above.</p>
+
+<div class="field"><label>To address</label><input id="sendTo" type="text" value="g188mapat33awn7r9uk08l0jc9my0n07fpmspxel"></div>
+<div class="field"><label>Amount (GNOT)</label><input id="sendAmount" type="text" placeholder="e.g. 10"></div>
+
+<p><button id="sendSimulateBtn">1. Simulate (dry run, no funds spent)</button></p>
+<div class="estimate" id="sendEstimate"></div>
+<p><button id="sendBroadcastBtn" class="secondary" disabled>2. Confirm &amp; Broadcast (spends real GNOT)</button></p>
+
+<div class="status" id="sendStatus"></div>
+
+<hr>
+
 <h1>Prepopulate from center</h1>
 <p>Places real logo pixels via <code>ImportHistoricalPixel</code> (owner-only, no per-address cooldown — needed since this runs hundreds of placements back to back), ordered nearest-to-center first, so the board reads as a recognizable partial logo at every point during the run. Each placement is individually simulated then broadcast, and its real cost is logged to <code>prepopulate-log.csv</code> as it goes — that's the dataset for graphing cost-vs-progress afterward.</p>
 
@@ -165,6 +179,93 @@ document.getElementById("broadcastBtn").addEventListener("click", async () => {
     setStatus("Deployed! TX HASH: " + data.txHash + "\n\n" + data.raw, "success");
   } catch (err) {
     setStatus("Broadcast failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "2. Confirm & Broadcast (spends real GNOT)";
+  }
+});
+
+let lastSendEstimate = null;
+
+function setSendStatus(text, cls) {
+  const el = document.getElementById("sendStatus");
+  el.className = "status" + (cls ? " " + cls : "");
+  el.textContent = text;
+}
+
+document.getElementById("sendSimulateBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  const toAddress = document.getElementById("sendTo").value.trim();
+  const amountGnot = Number(document.getElementById("sendAmount").value);
+  if (!keyringHome || !keyName || !password) {
+    setSendStatus("Fill in keyring home, key name, and password above first.", "error");
+    return;
+  }
+  if (!toAddress || !amountGnot || amountGnot <= 0) {
+    setSendStatus("Fill in a destination address and a positive amount.", "error");
+    return;
+  }
+  const amountUgnot = Math.round(amountGnot * 1e6);
+  const btn = document.getElementById("sendSimulateBtn");
+  btn.disabled = true;
+  btn.textContent = "Simulating…";
+  setSendStatus("");
+  document.getElementById("sendEstimate").style.display = "none";
+  document.getElementById("sendBroadcastBtn").disabled = true;
+  try {
+    const res = await fetch("/send/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password, toAddress, amountUgnot }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "simulate failed");
+    lastSendEstimate = { ...data, toAddress, amountUgnot };
+    const est = document.getElementById("sendEstimate");
+    est.style.display = "block";
+    const gasGnot = (data.gasFeeUgnot / 1e6).toFixed(4);
+    est.innerHTML =
+      `<div>Sending: ${amountGnot} GNOT to ${toAddress}</div>` +
+      `<div>Gas used: ${data.gasUsed.toLocaleString()}</div>` +
+      `<div>Gas fee: ${data.gasFeeUgnot.toLocaleString()} ugnot (~${gasGnot} GNOT)</div>`;
+    setSendStatus("Simulation succeeded — no funds spent yet. Review the estimate, then broadcast.", "success");
+    document.getElementById("sendBroadcastBtn").disabled = false;
+  } catch (err) {
+    setSendStatus("Simulate failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "1. Simulate (dry run, no funds spent)";
+  }
+});
+
+document.getElementById("sendBroadcastBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  if (!lastSendEstimate) {
+    setSendStatus("Simulate first.", "error");
+    return;
+  }
+  if (!confirm(`This will really send ${(lastSendEstimate.amountUgnot / 1e6)} GNOT to ${lastSendEstimate.toAddress}. Continue?`)) return;
+  const btn = document.getElementById("sendBroadcastBtn");
+  btn.disabled = true;
+  btn.textContent = "Broadcasting…";
+  setSendStatus("");
+  try {
+    const res = await fetch("/send/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        keyringHome, keyName, password,
+        toAddress: lastSendEstimate.toAddress,
+        amountUgnot: lastSendEstimate.amountUgnot,
+        gasWanted: lastSendEstimate.gasWanted,
+        gasFeeUgnot: lastSendEstimate.gasFeeUgnot,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "broadcast failed");
+    setSendStatus("Sent! TX HASH: " + data.txHash + "\n\n" + data.raw, "success");
+  } catch (err) {
+    setSendStatus("Broadcast failed:\n" + err.message, "error");
   } finally {
     btn.disabled = false;
     btn.textContent = "2. Confirm & Broadcast (spends real GNOT)";

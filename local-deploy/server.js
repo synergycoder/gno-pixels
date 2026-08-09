@@ -65,6 +65,18 @@ function addPkgArgs({ keyringHome }) {
   ];
 }
 
+function sendArgs({ keyringHome, toAddress, amountUgnot }) {
+  return [
+    "maketx", "send",
+    "-to", toAddress,
+    "-send", `${amountUgnot}ugnot`,
+    "-chainid", CHAIN_ID,
+    "-remote", RPC_URL,
+    "-home", keyringHome,
+    "-insecure-password-stdin",
+  ];
+}
+
 function callArgs({ keyringHome, func, args }) {
   const flat = [];
   for (const a of args) flat.push("-args", String(a));
@@ -238,6 +250,30 @@ const server = http.createServer(async (req, res) => {
       const result = req.url === "/simulate"
         ? await simulate(addPkgArgs, payload)
         : await broadcast(addPkgArgs, payload);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, { error: errText(err) });
+    }
+    return;
+  }
+
+  // Plain bank send (gnokey maketx send) -- for moving GNOT to the
+  // project wallet on sapphire-1 when the sending wallet's UI (e.g.
+  // Adena) has no preset for this chain and can't be pointed at a
+  // custom RPC from its own send screen. Same local-signing pattern as
+  // the addpkg deploy above: password typed fresh, piped to gnokey's
+  // stdin, never persisted.
+  if (req.method === "POST" && (req.url === "/send/simulate" || req.url === "/send/broadcast")) {
+    try {
+      const payload = await readBody(req);
+      if (!payload.toAddress || !payload.amountUgnot) {
+        sendJson(res, 400, { error: "toAddress and amountUgnot are required" });
+        return;
+      }
+      const buildArgs = (opts) => sendArgs({ ...opts, toAddress: payload.toAddress, amountUgnot: payload.amountUgnot });
+      const result = req.url === "/send/simulate"
+        ? await simulate(buildArgs, payload)
+        : await broadcast(buildArgs, payload);
       sendJson(res, 200, result);
     } catch (err) {
       sendJson(res, 500, { error: errText(err) });
