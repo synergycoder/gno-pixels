@@ -37,6 +37,12 @@
   .status.success { color: var(--success); }
   .estimate { font-size: 0.88rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1.1rem; margin-top: 1rem; display: none; }
   .estimate div { margin: 0.15rem 0; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .progress-bar { height: 10px; border-radius: 5px; background: var(--bg-elevated); border: 1px solid var(--border); overflow: hidden; margin-top: 0.75rem; }
+  .progress-bar > div { height: 100%; background: var(--accent); transition: width 0.3s; }
+  .batch-stats { font-size: 0.88rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1.1rem; margin-top: 1rem; display: none; }
+  .batch-stats div { margin: 0.15rem 0; }
+  .recent-log { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--text-muted); max-height: 160px; overflow-y: auto; margin-top: 0.75rem; white-space: pre; }
 </style>
 </head>
 <body>
@@ -59,12 +65,25 @@
 
 <div class="status" id="status"></div>
 
+<hr>
+
+<h1>Prepopulate from center</h1>
+<p>Places real logo pixels via <code>ImportHistoricalPixel</code> (owner-only, no per-address cooldown — needed since this runs hundreds of placements back to back), ordered nearest-to-center first, so the board reads as a recognizable partial logo at every point during the run. Each placement is individually simulated then broadcast, and its real cost is logged to <code>prepopulate-log.csv</code> as it goes — that's the dataset for graphing cost-vs-progress afterward.</p>
+
+<div class="field"><label>How many pixels (of <span id="totalPixels">728</span> total, nearest-center first)</label><input id="maxPixels" type="text" value="728"></div>
+
+<p><button id="startBatchBtn">Start prepopulating</button></p>
+
+<div class="batch-stats" id="batchStats"></div>
+
 <script>
 let lastEstimate = null;
 
 fetch("/config").then(r => r.json()).then(cfg => {
   document.getElementById("pkgPath").textContent = cfg.pkgPath;
   document.getElementById("chainId").textContent = cfg.chainId;
+  document.getElementById("totalPixels").textContent = cfg.totalTargetPixels;
+  document.getElementById("maxPixels").value = cfg.totalTargetPixels;
 });
 
 function formValues() {
@@ -151,6 +170,75 @@ document.getElementById("broadcastBtn").addEventListener("click", async () => {
     btn.textContent = "2. Confirm & Broadcast (spends real GNOT)";
   }
 });
+
+let pollTimer = null;
+
+function renderBatch(b) {
+  const statsEl = document.getElementById("batchStats");
+  statsEl.style.display = "block";
+  const pct = b.total ? Math.round((b.completed / b.total) * 100) : 0;
+  const totalGnot = (b.cumulativeUgnot / 1e6).toFixed(3);
+  const storageGnot = (b.cumulativeStorageFeeUgnot / 1e6).toFixed(3);
+  const gasGnot = (b.cumulativeGasFeeUgnot / 1e6).toFixed(4);
+  const avgUgnot = b.completed ? Math.round(b.cumulativeUgnot / b.completed) : 0;
+  statsEl.innerHTML =
+    `<div><b>${b.completed} / ${b.total}</b> placed (${pct}%)</div>` +
+    `<div class="progress-bar"><div style="width:${pct}%"></div></div>` +
+    `<div>Spent so far: <b>${totalGnot} GNOT</b> (storage ${storageGnot} + gas ${gasGnot})</div>` +
+    `<div>Average per pixel: ${avgUgnot.toLocaleString()} ugnot</div>` +
+    (b.lastError ? `<div style="color:var(--error)">Stopped: ${b.lastError}</div>` : "") +
+    (b.recent && b.recent.length
+      ? `<div class="recent-log">${b.recent.slice().reverse().map(r =>
+          `#${r.index} (${r.x},${r.y}) c${r.colorIndex} — ${r.storageDeltaBytes}B, ${r.storageFeeUgnot + r.gasFeeUgnot}ugnot, tx ${r.txHash.slice(0, 12)}…`
+        ).join("\n")}</div>`
+      : "");
+}
+
+async function pollBatch() {
+  const res = await fetch("/prepopulate/status");
+  const b = await res.json();
+  renderBatch(b);
+  const btn = document.getElementById("startBatchBtn");
+  if (b.running) {
+    btn.disabled = true;
+    btn.textContent = `Running… (${b.completed}/${b.total})`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = "Start prepopulating";
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+}
+
+document.getElementById("startBatchBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  const maxPixels = Number(document.getElementById("maxPixels").value) || 728;
+  if (!keyringHome || !keyName || !password) {
+    setStatus("Fill in keyring home, key name, and password above first.", "error");
+    return;
+  }
+  if (!confirm(`This will broadcast up to ${maxPixels} real transactions, spending real testnet GNOT as it goes. Continue?`)) return;
+  const btn = document.getElementById("startBatchBtn");
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  try {
+    const res = await fetch("/prepopulate/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password, maxPixels }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "failed to start");
+    pollTimer = setInterval(pollBatch, 2000);
+    pollBatch();
+  } catch (err) {
+    setStatus("Failed to start batch:\n" + err.message, "error");
+    btn.disabled = false;
+    btn.textContent = "Start prepopulating";
+  }
+});
+
+// Pick up an already-running batch on page load (e.g. after a refresh).
+pollBatch();
 </script>
 
 </body>
