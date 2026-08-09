@@ -338,6 +338,17 @@ func GetCommunityDesign(id string) string {
 	return encoded
 }
 
+// RemoveCommunityDesign lets the owner delist a design (offensive name,
+// spam, abuse of the free-submission path) -- owner-only moderation
+// hook. Pixels already placed toward it stay exactly as painted (this
+// only removes it from ListCommunityDesigns/GetCommunityDesign, it
+// doesn't touch the grid), and the id is never reused.
+func RemoveCommunityDesign(cur realm, id string) {
+	assertOwner()
+	communityDesigns.Remove(id)
+	communityDesignNames.Remove(id)
+}
+
 // collectPayment verifies at least feeUgnot of ugnot was attached to
 // this call (via the standard "send" field on /vm.m_call) and forwards
 // exactly that much from the realm's own balance to collectionOwner,
