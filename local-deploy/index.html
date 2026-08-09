@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GNO Pixels — Local Deploy Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --accent: #6c5ce7; --accent-strong: #8274ef; --bg: #0b0b0f; --bg-elevated: #16161c;
+    --border: rgba(255,255,255,0.14); --border-soft: rgba(255,255,255,0.08);
+    --text: #ecebf5; --text-muted: #9997ab; --success: #4ade80; --error: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 640px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; line-height: 1.55;
+  }
+  h1 { font-size: 1.4rem; }
+  .note {
+    background: rgba(255, 180, 0, 0.1); border: 1px solid rgba(255, 180, 0, 0.35); border-radius: 10px;
+    padding: 0.9rem 1.1rem; font-size: 0.86rem; margin: 1.25rem 0;
+  }
+  .field { margin: 1rem 0; }
+  .field label { display: block; margin-bottom: 0.3rem; color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .field input { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; }
+  code { font-family: ui-monospace, monospace; background: var(--bg-elevated); padding: 0.15rem 0.4rem; border-radius: 4px; word-break: break-all; }
+  button {
+    padding: 0.7rem 1.4rem; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent);
+    color: #fff; cursor: pointer; font-family: inherit; font-size: 0.95rem; font-weight: 700;
+  }
+  button:hover { background: var(--accent-strong); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: none; color: var(--text); border-style: dashed; border-color: var(--border); }
+  .status { font-size: 0.86rem; margin-top: 1rem; white-space: pre-wrap; word-break: break-word; }
+  .status.error { color: var(--error); }
+  .status.success { color: var(--success); }
+  .estimate { font-size: 0.88rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1.1rem; margin-top: 1rem; display: none; }
+  .estimate div { margin: 0.15rem 0; }
+</style>
+</head>
+<body>
+
+<h1>GNO Pixels — Local Deploy Console</h1>
+<p>Runs entirely on your own machine via a local <code>gnokey</code> process. Your keyring password is sent once per click, straight to this local server, straight into <code>gnokey</code>'s stdin — never logged, never saved, never sent anywhere but <code>127.0.0.1</code>.</p>
+
+<div class="note">
+  Target: <code id="pkgPath">loading…</code> on <code id="chainId">…</code><br><br>
+  This only makes sense if the key you sign with actually controls <code>g188mapat33awn7r9uk08l0jc9my0n07fpmspxel</code> — that address is hardcoded into the package path and can't be changed here.
+</div>
+
+<div class="field"><label>Keyring home directory</label><input id="keyringHome" type="text" placeholder="e.g. /Users/you/.gnokey or /Users/you/.gno-test-keys"></div>
+<div class="field"><label>Key name</label><input id="keyName" type="text" placeholder="e.g. mywallet"></div>
+<div class="field"><label>Keyring password</label><input id="password" type="password" placeholder="never stored, sent once per click"></div>
+
+<p><button id="simulateBtn">1. Simulate (dry run, no funds spent)</button></p>
+<div class="estimate" id="estimate"></div>
+<p><button id="broadcastBtn" class="secondary" disabled>2. Confirm &amp; Broadcast (spends real GNOT)</button></p>
+
+<div class="status" id="status"></div>
+
+<script>
+let lastEstimate = null;
+
+fetch("/config").then(r => r.json()).then(cfg => {
+  document.getElementById("pkgPath").textContent = cfg.pkgPath;
+  document.getElementById("chainId").textContent = cfg.chainId;
+});
+
+function formValues() {
+  return {
+    keyringHome: document.getElementById("keyringHome").value.trim(),
+    keyName: document.getElementById("keyName").value.trim(),
+    password: document.getElementById("password").value,
+  };
+}
+
+function setStatus(text, cls) {
+  const el = document.getElementById("status");
+  el.className = "status" + (cls ? " " + cls : "");
+  el.textContent = text;
+}
+
+document.getElementById("simulateBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  if (!keyringHome || !keyName || !password) {
+    setStatus("Fill in keyring home, key name, and password first.", "error");
+    return;
+  }
+  const btn = document.getElementById("simulateBtn");
+  btn.disabled = true;
+  btn.textContent = "Simulating…";
+  setStatus("");
+  document.getElementById("estimate").style.display = "none";
+  document.getElementById("broadcastBtn").disabled = true;
+  try {
+    const res = await fetch("/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "simulate failed");
+    lastEstimate = data;
+    const est = document.getElementById("estimate");
+    est.style.display = "block";
+    const storageGnot = data.storageFeeUgnot != null ? (data.storageFeeUgnot / 1e6).toFixed(3) : "?";
+    const gasGnot = (data.gasFeeUgnot / 1e6).toFixed(4);
+    est.innerHTML =
+      `<div>Gas used: ${data.gasUsed.toLocaleString()}</div>` +
+      `<div>Gas fee: ${data.gasFeeUgnot.toLocaleString()} ugnot (~${gasGnot} GNOT)</div>` +
+      `<div>Storage fee: ${data.storageFeeUgnot != null ? data.storageFeeUgnot.toLocaleString() + " ugnot (~" + storageGnot + " GNOT)" : "unknown"}</div>`;
+    setStatus("Simulation succeeded — no funds spent yet. Review the estimate, then broadcast.", "success");
+    document.getElementById("broadcastBtn").disabled = false;
+  } catch (err) {
+    setStatus("Simulate failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "1. Simulate (dry run, no funds spent)";
+  }
+});
+
+document.getElementById("broadcastBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  if (!lastEstimate) {
+    setStatus("Simulate first.", "error");
+    return;
+  }
+  if (!confirm("This will really broadcast and spend real testnet GNOT. Continue?")) return;
+  const btn = document.getElementById("broadcastBtn");
+  btn.disabled = true;
+  btn.textContent = "Broadcasting…";
+  setStatus("");
+  try {
+    const res = await fetch("/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        keyringHome, keyName, password,
+        gasWanted: lastEstimate.gasWanted,
+        gasFeeUgnot: lastEstimate.gasFeeUgnot,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "broadcast failed");
+    setStatus("Deployed! TX HASH: " + data.txHash + "\n\n" + data.raw, "success");
+  } catch (err) {
+    setStatus("Broadcast failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "2. Confirm & Broadcast (spends real GNOT)";
+  }
+});
+</script>
+
+</body>
+</html>
