@@ -38,15 +38,22 @@
   }
   .site-header-inner {
     max-width: 1500px; margin: 0 auto; padding: 0.85rem 1.25rem;
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem;
   }
-  .site-header-left { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+  /* The two 1fr tracks always split leftover space equally, regardless
+     of what's in the right-hand wallet-bar -- that's what keeps the
+     center column truly centered on screen rather than just centered
+     within the leftover space next to the wallet bar. */
+  .site-header-spacer { min-width: 0; }
+  .site-header-center { grid-column: 2; text-align: right; }
+  .wallet-bar { grid-column: 3; justify-self: end; }
   .site-header h1 {
     font-family: "Press Start 2P", "Courier New", monospace;
     font-size: 0.95rem; line-height: 1.4; letter-spacing: 0.02em; margin: 0;
+    display: inline-block; cursor: pointer;
   }
   .title-icon { height: 1.4em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
-  .realm-link { font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; }
+  .realm-link { display: block; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; margin-top: 0.2rem; }
   .realm-link:hover { color: var(--accent); text-decoration: underline; }
   .tagline { color: var(--text-muted); font-size: 0.95rem; margin: 0 0 1.5rem; text-align: center; }
 
@@ -163,8 +170,9 @@
 
 <header class="site-header">
   <div class="site-header-inner">
-    <div class="site-header-left">
-      <h1><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
+    <div class="site-header-spacer"></div>
+    <div class="site-header-center">
+      <h1 id="titleHome" title="Back to center"><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
       <a class="realm-link" href="https://sapphire.testnets.gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixelsandbox" target="_blank" rel="noopener">View realm ↗</a>
     </div>
     <div class="wallet-bar">
@@ -209,7 +217,7 @@
       <span id="zoomLabel">8px/cell</span>
       <button id="zoomIn" type="button" title="Zoom in">+</button>
     </div>
-    <div class="coord-readout" id="coordReadout">Hover a cell — drag to pan</div>
+    <div class="coord-readout" id="coordReadout">Hover a cell, drag to pan, right-click to see who placed it</div>
   </div>
   <div class="board-wrap" id="boardWrap"><div class="board" id="board"></div></div>
 
@@ -292,6 +300,19 @@ function parseGnoEvalString(raw) {
   const m = /^\("((?:[^"\\]|\\.)*)"\s+string\)/.exec((raw || "").trim());
   if (!m) return null;
   try { return JSON.parse('"' + m[1] + '"'); } catch { return null; }
+}
+
+// PlacedBy returns (address, int64) -- two gno-eval lines. The address
+// type annotation is ".uverse.address", not "string", so
+// parseGnoEvalString's stricter regex won't match it; and the height
+// can't use parseGnoEvalNumber on the raw text since a bech32 address
+// contains plenty of its own digit runs that would be matched first.
+function parsePlacedBy(raw) {
+  const addrMatch = /^\("((?:[^"\\]|\\.)*)"/.exec((raw || "").trim());
+  const heightMatch = /(-?\d+)\s+int64\)/.exec(raw || "");
+  let addr = null;
+  try { addr = addrMatch ? JSON.parse('"' + addrMatch[1] + '"') : null; } catch {}
+  return { addr, height: heightMatch ? Number(heightMatch[1]) : null };
 }
 
 // ---------- Adena wallet ----------
@@ -534,6 +555,27 @@ function scrollCellIntoView(x, y) {
   if (el) el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
 }
 
+// Right-click a cell to see who placed it and when, without spending a
+// transaction. On-demand rather than pre-fetched for every cell -- with
+// up to 4096+ cells, querying PlacedBy for all of them up front would be
+// a lot of RPC round trips for information most visitors never look at.
+async function showPlacedBy(x, y, coordReadout) {
+  const prevText = coordReadout.textContent;
+  coordReadout.textContent = `(${x}, ${y}) — checking…`;
+  try {
+    const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + `.PlacedBy(${x},${y})`);
+    const { addr, height } = parsePlacedBy(raw);
+    coordReadout.textContent = addr
+      ? `(${x}, ${y}) — placed by ${addr.slice(0, 6)}…${addr.slice(-4)} at height ${height}`
+      : `(${x}, ${y}) — not placed yet`;
+  } catch (err) {
+    coordReadout.textContent = `(${x}, ${y}) — lookup failed: ${err.message}`;
+  }
+  setTimeout(() => {
+    if (coordReadout.textContent.startsWith(`(${x}, ${y})`)) coordReadout.textContent = prevText;
+  }, 5000);
+}
+
 // ---------- rendering ----------
 function buildBoard(w, h) {
   const board = document.getElementById("board");
@@ -550,6 +592,10 @@ function buildBoard(w, h) {
       cell.addEventListener("click", () => {
         if (wasDragGesture()) return;
         placePixel(absX, absY, selectedColor);
+      });
+      cell.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        showPlacedBy(absX, absY, coordReadout);
       });
       board.appendChild(cell);
       cellEls.push(cell);
@@ -728,6 +774,11 @@ async function loadLeaderboard() {
     el.innerHTML = `<li class="muted">Leaderboard needs the next realm update.</li>`;
   }
 }
+
+document.getElementById("titleHome").addEventListener("click", () => {
+  if (!gridWidth || !gridHeight) return;
+  scrollCellIntoView(originX + Math.floor(gridWidth / 2), originY + Math.floor(gridHeight / 2));
+});
 
 initDragToPan();
 loadCanvas();
