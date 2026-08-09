@@ -70,6 +70,11 @@
   .wallet-chip .addr { font-family: ui-monospace, monospace; color: var(--text-muted); }
   .wallet-chip .balance { font-weight: 700; }
   .wallet-chip .balance.zero { color: #f87171; }
+  .wallet-chip .disconnect-btn {
+    border: none; background: none; color: var(--text-muted); cursor: pointer; font-family: inherit;
+    font-size: 1rem; line-height: 1; padding: 0.1rem 0.2rem; border-radius: 4px;
+  }
+  .wallet-chip .disconnect-btn:hover { color: var(--text); background: var(--border-soft); }
   .faucet-btn {
     padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid var(--success); background: none;
     color: var(--success); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 700; text-decoration: none;
@@ -157,6 +162,7 @@
   <span class="wallet-chip" id="walletChip" style="display:none">
     <span class="addr" id="walletAddr"></span>
     <span class="balance" id="walletBalance"></span>
+    <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
   </span>
   <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener" style="display:none">🚰 Get testnet tokens</a>
 </div>
@@ -265,6 +271,7 @@ function parseGnoEvalString(raw) {
 // ---------- Adena wallet ----------
 let connectedAddress = null;
 let adenaAvailable = null; // null = not checked yet, true/false once known
+let accountChangeRegistered = false;
 
 // Content scripts (Adena's included) commonly inject at "document_idle",
 // which can run AFTER a page's own inline <script> has already executed
@@ -373,6 +380,20 @@ function applyConnectedUI(address) {
   connectedAddress = address;
   renderWalletBar();
   refreshBalance();
+
+  // Adena has no "off"/unsubscribe API, so this listener outlives any
+  // later Disconnect click on the same page -- guard on connectedAddress
+  // being set so a still-registered listener doesn't silently reconnect
+  // the UI after the user disconnected, and register only once so
+  // reconnecting later doesn't stack duplicate listeners.
+  if (!accountChangeRegistered && typeof window.adena !== "undefined") {
+    window.adena.On("changedAccount", (newAddress) => {
+      if (!newAddress || !connectedAddress) return;
+      applyConnectedUI(newAddress);
+      loadCanvas();
+    });
+    accountChangeRegistered = true;
+  }
 }
 
 document.getElementById("connectBtn").addEventListener("click", async () => {
@@ -394,6 +415,17 @@ document.getElementById("connectBtn").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
   }
+});
+
+document.getElementById("disconnectBtn").addEventListener("click", () => {
+  // This only clears our own UI state -- Adena remembers per-domain
+  // approval at the extension level, which a website can't revoke, so
+  // a fresh page load will silently reconnect again (same as most
+  // dApps' "disconnect" -- it ends this session, not Adena's grant).
+  // To fully revoke, disconnect the site from within Adena itself.
+  connectedAddress = null;
+  renderWalletBar();
+  loadCanvas();
 });
 
 (async function initWallet() {
