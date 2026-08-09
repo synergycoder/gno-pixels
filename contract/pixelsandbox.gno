@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 
+	"chain"
+	"chain/banker"
 	runtime "chain/runtime"
 	unsaferealm "chain/runtime/unsafe"
 
@@ -34,6 +36,18 @@ const (
 
 	CooldownBlocks = 1
 	cellPx         = 8
+
+	// FeePerPixelUgnot is charged for any placement that doesn't match
+	// the current owner-curated official target (see officialTarget) --
+	// placing toward the official design stays free, everything else
+	// (free-form painting, or bulk-helping finish someone else's custom
+	// canvas) costs this per cell, paid to collectionOwner.
+	FeePerPixelUgnot = 100_000 // 0.1 GNOT
+
+	// MaxBulkPixels bounds SetPixels' batch size -- keeps a single
+	// transaction's gas/arg-size reasonable and bounds the worst-case
+	// payment amount a caller has to attach.
+	MaxBulkPixels = 10
 )
 
 var palette = []string{
@@ -57,6 +71,7 @@ var (
 	placedAtHeight  avl.Tree
 	lastPlacedBlock avl.Tree
 	placementCounts avl.Tree // address.String() -> int64, total successful placements (leaderboard)
+	officialTarget  avl.Tree // key(x,y) -> int64 colorIndex, owner-curated free-to-place design
 
 	totalPlacements int64
 	occupiedCells   int64
@@ -156,7 +171,79 @@ func bumpPlacementCount(placer address) {
 	placementCounts.Set(k, count+1)
 }
 
+func isOfficialTarget(x, y, colorIndex int64) bool {
+	c, ok := officialTarget.Get(key(x, y)).(int64)
+	return ok && c == colorIndex
+}
+
+func IsOfficialTarget(x, y, colorIndex int64) bool { return isOfficialTarget(x, y, colorIndex) }
+
+func FeePerPixel() int64        { return FeePerPixelUgnot }
+func MaxBulkPixelsPerTx() int64 { return MaxBulkPixels }
+
+// SetOfficialTarget bulk-registers (or replaces, if called again) the
+// free-to-place design -- owner-only. encoded is "x,y,c;x,y,c;...",
+// matching the CSV-ish convention already used by TopPlacers. Pass an
+// empty string to clear the target entirely (every placement then
+// requires payment).
+func SetOfficialTarget(cur realm, encoded string) {
+	assertOwner()
+	officialTarget = avl.Tree{}
+	if encoded == "" {
+		return
+	}
+	for _, entry := range strings.Split(encoded, ";") {
+		parts := strings.SplitN(entry, ",", 3)
+		if len(parts) != 3 {
+			panic("malformed entry: " + entry)
+		}
+		x, err1 := strconv.ParseInt(parts[0], 10, 64)
+		y, err2 := strconv.ParseInt(parts[1], 10, 64)
+		c, err3 := strconv.ParseInt(parts[2], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			panic("malformed entry: " + entry)
+		}
+		officialTarget.Set(key(x, y), c)
+	}
+}
+
+// collectPayment verifies at least feeUgnot of ugnot was attached to
+// this call (via the standard "send" field on /vm.m_call) and forwards
+// exactly that much from the realm's own balance to collectionOwner,
+// leaving any overpayment sitting in the realm's balance rather than
+// dealing with refund complexity -- callers control how much they
+// attach, so overpaying is their own choice, not something to protect
+// against.
+//
+// chain/runtime/unsafe's own doc on OriginSend warns the envelope is
+// shared across the whole call chain, so a malicious intermediate
+// realm could consume it after a naive check passes (TOCTOU) -- the
+// doc recommends pairing OriginSend with AssertOriginCall AND
+// IsUserCall. AssertOriginCall specifically panics if invoked from
+// anywhere but a top-level entry point (its own doc: "panic... when
+// invoked by another method, even from the same realm or package"),
+// so callers (SetPixel, SetPixels) call it themselves before reaching
+// here rather than this helper calling it on their behalf.
+func collectPayment(cur realm, feeUgnot int64) {
+	if !unsaferealm.PreviousRealm().IsUserCall() {
+		panic("payment must come from a direct user call")
+	}
+	sent := unsaferealm.OriginSend()
+	var total int64
+	for _, c := range sent {
+		if c.Denom == "ugnot" {
+			total += c.Amount
+		}
+	}
+	if total < feeUgnot {
+		panic(ufmt.Sprintf("insufficient payment: this placement costs %d ugnot, got %d", feeUgnot, total))
+	}
+	banker_ := banker.NewBanker(banker.BankerTypeRealmSend, cur)
+	banker_.SendCoins(cur.Address(), collectionOwner, chain.Coins{chain.NewCoin("ugnot", feeUgnot)})
+}
+
 func SetPixel(cur realm, x, y, colorIndex int64) {
+	runtime.AssertOriginCall()
 	maybeExpand()
 	if !inBounds(x, y) {
 		panic("out of bounds")
@@ -172,9 +259,74 @@ func SetPixel(cur realm, x, y, colorIndex int64) {
 			panic(ufmt.Sprintf("cooldown active: %d more block(s) to wait", CooldownBlocks-elapsed))
 		}
 	}
+	if !isOfficialTarget(x, y, colorIndex) {
+		collectPayment(cur, FeePerPixelUgnot)
+	}
 	recordPlacement(x, y, colorIndex, caller, runtime.ChainHeight())
 	lastPlacedBlock.Set(callerKey, runtime.ChainHeight())
 	totalPlacements++
+}
+
+// SetPixels places up to MaxBulkPixels pixels in one transaction.
+// encoded is "x,y,c;x,y,c;...". Cooldown is checked and updated once
+// for the whole batch rather than per pixel -- SetPixel's own per-call
+// cooldown would otherwise reject every entry after the first within
+// the same block, since they all execute in the same transaction/
+// height. Fee is the sum of FeePerPixelUgnot across every entry that
+// doesn't match the current official target, collected as one payment.
+func SetPixels(cur realm, encoded string) {
+	runtime.AssertOriginCall()
+	entries := strings.Split(encoded, ";")
+	if len(entries) == 0 || len(entries) > MaxBulkPixels {
+		panic(ufmt.Sprintf("SetPixels accepts 1 to %d pixels per call", MaxBulkPixels))
+	}
+	maybeExpand()
+	caller := callerAddress()
+	callerKey := caller.String()
+	if last, ok := lastPlacedBlock.Get(callerKey).(int64); ok {
+		elapsed := runtime.ChainHeight() - last
+		if elapsed < CooldownBlocks {
+			panic(ufmt.Sprintf("cooldown active: %d more block(s) to wait", CooldownBlocks-elapsed))
+		}
+	}
+
+	xs := make([]int64, len(entries))
+	ys := make([]int64, len(entries))
+	cs := make([]int64, len(entries))
+	var feeTotal int64
+	for i, entry := range entries {
+		parts := strings.SplitN(entry, ",", 3)
+		if len(parts) != 3 {
+			panic("malformed entry: " + entry)
+		}
+		x, err1 := strconv.ParseInt(parts[0], 10, 64)
+		y, err2 := strconv.ParseInt(parts[1], 10, 64)
+		c, err3 := strconv.ParseInt(parts[2], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			panic("malformed entry: " + entry)
+		}
+		if !inBounds(x, y) {
+			panic("out of bounds")
+		}
+		if c < 0 || c >= int64(len(palette)) {
+			panic("invalid color index")
+		}
+		if !isOfficialTarget(x, y, c) {
+			feeTotal += FeePerPixelUgnot
+		}
+		xs[i], ys[i], cs[i] = x, y, c
+	}
+
+	if feeTotal > 0 {
+		collectPayment(cur, feeTotal)
+	}
+
+	height := runtime.ChainHeight()
+	for i := range xs {
+		recordPlacement(xs[i], ys[i], cs[i], caller, height)
+		totalPlacements++
+	}
+	lastPlacedBlock.Set(callerKey, height)
 }
 
 func ImportHistoricalPixel(cur realm, x, y, colorIndex int64, originalPlacer address, originalHeight int64) {
