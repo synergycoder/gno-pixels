@@ -145,6 +145,16 @@
   .board .cell { border: 1px solid var(--border-soft); }
   .board:not(.dragging-active) .cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
   .board.busy { pointer-events: none; opacity: 0.7; }
+  /* Soft heads-up for where the official design will go -- a faint
+     persistent outline on every cell that's part of the target area
+     (filled or not, so the shape stays visible as it fills in), plus a
+     stronger translucent tint layered on top via box-shadow (not
+     background-image, which a cell's own inline backgroundColor would
+     otherwise fight with) specifically on cells still unplaced, so
+     people positioning free-form art can see at a glance what to avoid
+     without the color itself being obscured once painted. */
+  .board .cell.reserved-target { outline: 1px solid rgba(130,116,239,0.3); outline-offset: -1px; }
+  .board .cell.reserved-empty { box-shadow: inset 0 0 0 100px rgba(130,116,239,0.16); }
 
   .palette-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin: 1.1rem 0 0.6rem; flex-wrap: wrap; }
   .swatch { width: 32px; height: 32px; border-radius: 7px; cursor: pointer; border: 2px solid var(--border); }
@@ -198,6 +208,10 @@
   .modal .primary-btn:hover { background: var(--accent-strong); }
   .modal button:disabled { opacity: 0.5; cursor: default; }
   .custom-warning { color: #f87171; }
+  .overlap-warning {
+    background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); border-radius: 8px;
+    padding: 0.7rem 0.9rem; font-size: 0.83rem; color: #f87171; margin: 0.75rem 0;
+  }
   .tab-row { display: flex; gap: 0.5rem; margin-bottom: 1.1rem; }
   .tab-btn {
     flex: 1; padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid var(--border);
@@ -336,6 +350,7 @@
     <div id="customStep2" style="display:none">
       <p class="modal-hint">Click on the board to position your design (drag the header if you need to move this dialog).</p>
       <canvas id="customPreviewCanvas" class="preview-canvas"></canvas>
+      <p class="overlap-warning" id="customOverlapWarning" style="display:none"></p>
       <div class="field-row"><label for="customDesignName">Give it a name (shown to the community)</label><input type="text" id="customDesignName" maxlength="60" placeholder="e.g. Our team logo"></div>
       <p class="status" id="customCostSummary"></p>
       <button type="button" class="primary-btn" id="customSubmitBtn">Submit for the community to fill in</button>
@@ -688,7 +703,7 @@ function buildBoard(w, h) {
     for (let x = 0; x < w; x++) {
       const absX = originX + x, absY = originY + y;
       const cell = document.createElement("div");
-      cell.className = "cell";
+      cell.className = "cell" + (targetMap().has(absX + "," + absY) ? " reserved-target" : "");
       cell.title = `(${absX}, ${absY})`;
       cell.addEventListener("mouseenter", () => { coordReadout.textContent = `(${absX}, ${absY})`; });
       cell.addEventListener("click", () => {
@@ -721,7 +736,14 @@ function buildPalette() {
 
 function paintSnapshot(snapshot) {
   for (let i = 0; i < snapshot.length && i < cellEls.length; i++) {
-    cellEls[i].style.background = paletteColors[Number(snapshot[i])] || "#000";
+    // backgroundColor (not the "background" shorthand) so it doesn't
+    // clobber .reserved-empty's CSS-class background-image -- setting
+    // the shorthand inline implicitly resets background-image to none
+    // for that element regardless of the class rule's specificity.
+    cellEls[i].style.backgroundColor = paletteColors[Number(snapshot[i])] || "#000";
+    const x = originX + (i % gridWidth), y = originY + Math.floor(i / gridWidth);
+    const isEmpty = Number(snapshot[i]) === 0;
+    cellEls[i].classList.toggle("reserved-empty", isEmpty && targetMap().has(x + "," + y));
   }
 }
 
@@ -1236,6 +1258,23 @@ function updateCustomCost() {
     `<br>Submitting just registers the design (a small gas/storage fee), same as any other transaction.`;
   if (outOfBounds > 0) html += `<br><span class="custom-warning">${outOfBounds} pixel(s) fall outside the board — move your design.</span>`;
   document.getElementById("customCostSummary").innerHTML = html;
+
+  // Separate, more prominent callout for overlapping the reserved
+  // official-logo area at all -- distinct from the cost breakdown
+  // above, since even a free (color-matching) overlap is worth flagging:
+  // it means part of this design sits on top of the community's own
+  // reserved artwork, which people asked to be warned about explicitly
+  // rather than having to notice it buried in a cost line.
+  const overlapWarnEl = document.getElementById("customOverlapWarning");
+  const overlapCount = free + vandal;
+  if (overlapCount > 0) {
+    overlapWarnEl.style.display = "";
+    overlapWarnEl.textContent = vandal > 0
+      ? `⚠️ ${overlapCount} of your pixels overlap the reserved official logo area (${vandal} with the wrong color, at the higher ${formatGnot(customVandalismFee)}/pixel rate) — consider moving your design so it doesn't touch that zone.`
+      : `⚠️ ${overlapCount} of your pixels overlap the reserved official logo area — they happen to match its color so they'd stay free, but you may still want to move your design clear of that zone.`;
+  } else {
+    overlapWarnEl.style.display = "none";
+  }
   document.getElementById("customSubmitBtn").disabled = outOfBounds > 0 || customTracedPixels.length === 0;
 }
 
