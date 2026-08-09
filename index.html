@@ -32,30 +32,47 @@
     background: var(--bg); color: var(--text);
     margin: 0; line-height: 1.5;
   }
+  .site-header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+  }
+  .site-header-inner {
+    max-width: 1500px; margin: 0 auto; padding: 0.85rem 1.25rem;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  .site-header-left { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+  .site-header h1 {
+    font-family: "Press Start 2P", "Courier New", monospace;
+    font-size: 0.95rem; line-height: 1.4; letter-spacing: 0.02em; margin: 0;
+  }
+  .title-icon { height: 1.4em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
+  .realm-link { font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; }
+  .realm-link:hover { color: var(--accent); text-decoration: underline; }
+  .tagline { color: var(--text-muted); font-size: 0.95rem; margin: 0 0 1.5rem; text-align: center; }
+
+  .site-footer {
+    position: sticky; bottom: 0; z-index: 20;
+    background: var(--bg); border-top: 1px solid var(--border);
+    text-align: center; padding: 0.75rem 1.25rem; font-size: 0.8rem; color: var(--text-muted);
+  }
+  .site-footer a { color: var(--accent); }
+
   .layout {
     display: flex; justify-content: center; align-items: flex-start; gap: 1.75rem;
-    max-width: 1300px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
+    max-width: 1500px; margin: 0 auto; padding: 2rem 1.25rem 3rem;
   }
-  .page { flex: 0 1 760px; min-width: 0; max-width: 760px; }
+  .page { flex: 0 1 900px; min-width: 0; max-width: 900px; }
   .sidebar {
     display: none; flex: 0 0 260px; width: 260px;
-    position: sticky; top: 2.5rem;
+    position: sticky; top: 4.5rem;
   }
-  @media (min-width: 1150px) { .sidebar { display: block; } }
+  @media (min-width: 1550px) { .sidebar { display: block; } }
   .sidebar h2 { font-size: 0.95rem; margin: 0 0 0.9rem; }
   .sidebar-card {
     background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.25rem;
   }
-  header { text-align: center; margin-bottom: 2rem; }
-  header h1 {
-    font-family: "Press Start 2P", "Courier New", monospace;
-    font-size: 1.3rem; line-height: 1.6; letter-spacing: 0.02em;
-    margin: 0 0 0.6rem;
-  }
-  .title-icon { height: 1.7em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
-  header p { color: var(--text-muted); font-size: 0.95rem; margin: 0; }
-  .wallet-bar { display: flex; justify-content: center; align-items: center; gap: 0.6rem; margin: 1.25rem 0; flex-wrap: wrap; }
+  .wallet-bar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
   .adena-btn {
     padding: 0.6rem 1.3rem; border-radius: 8px; border: 1px dashed var(--border);
     background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 600;
@@ -107,11 +124,15 @@
   }
   .zoom-controls button:hover { background: var(--border-soft); border-color: var(--accent); }
   .board-wrap {
-    border: 1px solid var(--border); border-radius: 10px; width: 100%; max-height: 65vh; overflow: auto;
+    border: 1px solid var(--border); border-radius: 10px; width: 100%; max-height: 75vh; overflow: auto;
     background: var(--bg-elevated); cursor: grab; touch-action: none;
   }
   .board-wrap.dragging { cursor: grabbing; }
-  .board { display: grid; width: max-content; }
+  /* margin:auto centers the board when it's narrower than board-wrap,
+     and correctly collapses to 0 (normal left-anchored scroll) when
+     zoomed in past the wrap's width -- unlike flex/grid centering,
+     which clips the scrollable start in that case. */
+  .board { display: grid; width: max-content; margin: 0 auto; }
   .board .cell { border: 1px solid var(--border-soft); }
   .board:not(.dragging-active) .cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
   .board.busy { pointer-events: none; opacity: 0.7; }
@@ -140,6 +161,25 @@
 </head>
 <body>
 
+<header class="site-header">
+  <div class="site-header-inner">
+    <div class="site-header-left">
+      <h1><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
+      <a class="realm-link" href="https://sapphire.testnets.gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixelsandbox" target="_blank" rel="noopener">View realm ↗</a>
+    </div>
+    <div class="wallet-bar">
+      <button class="adena-btn" id="connectBtn">Connect Adena</button>
+      <span class="wallet-chip" id="walletChip" style="display:none">
+        <span class="addr" id="walletAddr"></span>
+        <span class="balance" id="walletBalance"></span>
+        <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
+      </span>
+      <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener" style="display:none">🚰 Get testnet tokens</a>
+    </div>
+  </div>
+  <p class="status" id="topStatus">Loading…</p>
+</header>
+
 <div class="layout">
 
 <aside class="sidebar sidebar-left">
@@ -152,21 +192,7 @@
 
 <div class="page">
 
-<header>
-  <h1><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
-  <p>A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
-</header>
-
-<div class="wallet-bar">
-  <button class="adena-btn" id="connectBtn">Connect Adena</button>
-  <span class="wallet-chip" id="walletChip" style="display:none">
-    <span class="addr" id="walletAddr"></span>
-    <span class="balance" id="walletBalance"></span>
-    <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
-  </span>
-  <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener" style="display:none">🚰 Get testnet tokens</a>
-</div>
-<p class="status" id="topStatus">Loading…</p>
+<p class="tagline">A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
 
 <div class="help-section" id="helpSection" style="display:none">
   <h2>🏁 Help us finish the gno.land logo</h2>
@@ -198,10 +224,6 @@
   </div>
 </div>
 
-<footer>
-  Part of the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> family — an independent, community-built tool, not affiliated with the gno.land team.
-</footer>
-
 </div>
 
 <aside class="sidebar sidebar-right">
@@ -212,6 +234,10 @@
 </aside>
 
 </div>
+
+<footer class="site-footer">
+  Part of the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> project — an independent, community-built tool, not affiliated with the gno.land team.
+</footer>
 
 <script src="target_pattern.js"></script>
 <script>
