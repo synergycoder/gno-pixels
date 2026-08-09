@@ -53,6 +53,14 @@ const (
 	// canvas) costs this per cell, paid to collectionOwner.
 	FeePerPixelUgnot = 100_000 // 0.1 GNOT
 
+	// VandalismFeeUgnot applies instead of FeePerPixelUgnot when a cell
+	// IS part of the official target area but the caller paints it a
+	// different color than the design calls for -- overwriting/defacing
+	// an in-progress logo cell costs more than painting blank free-form
+	// space, so griefing the logo is strictly more expensive than
+	// helping (free) or painting elsewhere (the normal rate).
+	VandalismFeeUgnot = 1_000_000 // 1 GNOT
+
 	// MaxBulkPixels bounds SetPixels' batch size -- keeps a single
 	// transaction's gas/arg-size reasonable and bounds the worst-case
 	// payment amount a caller has to attach.
@@ -185,10 +193,36 @@ func isOfficialTarget(x, y, colorIndex int64) bool {
 	return ok && c == colorIndex
 }
 
-func IsOfficialTarget(x, y, colorIndex int64) bool { return isOfficialTarget(x, y, colorIndex) }
+// inOfficialTargetArea reports whether (x, y) has ANY owner-curated
+// target color registered, regardless of what colorIndex is being
+// proposed -- used to tell "wrong color on a logo cell" (vandalism,
+// charged VandalismFeeUgnot) apart from "cell outside the design
+// entirely" (charged the normal FeePerPixelUgnot).
+func inOfficialTargetArea(x, y int64) bool {
+	_, ok := officialTarget.Get(key(x, y)).(int64)
+	return ok
+}
 
-func FeePerPixel() int64        { return FeePerPixelUgnot }
-func MaxBulkPixelsPerTx() int64 { return MaxBulkPixels }
+func IsOfficialTarget(x, y, colorIndex int64) bool { return isOfficialTarget(x, y, colorIndex) }
+func InOfficialTargetArea(x, y int64) bool         { return inOfficialTargetArea(x, y) }
+
+// pixelFee returns what a single (x, y, colorIndex) placement costs:
+// free if it matches the official target exactly, VandalismFeeUgnot if
+// the cell is part of the target area but the color is wrong, or the
+// normal FeePerPixelUgnot for anywhere else on the board.
+func pixelFee(x, y, colorIndex int64) int64 {
+	if isOfficialTarget(x, y, colorIndex) {
+		return 0
+	}
+	if inOfficialTargetArea(x, y) {
+		return VandalismFeeUgnot
+	}
+	return FeePerPixelUgnot
+}
+
+func FeePerPixel() int64          { return FeePerPixelUgnot }
+func VandalismFeePerPixel() int64 { return VandalismFeeUgnot }
+func MaxBulkPixelsPerTx() int64   { return MaxBulkPixels }
 
 // SetOfficialTarget bulk-registers (or replaces, if called again) the
 // free-to-place design -- owner-only. encoded is "x,y,c;x,y,c;...",
@@ -268,8 +302,8 @@ func SetPixel(cur realm, x, y, colorIndex int64) {
 			panic(ufmt.Sprintf("cooldown active: %d more block(s) to wait", CooldownBlocks-elapsed))
 		}
 	}
-	if !isOfficialTarget(x, y, colorIndex) {
-		collectPayment(cur, FeePerPixelUgnot)
+	if fee := pixelFee(x, y, colorIndex); fee > 0 {
+		collectPayment(cur, fee)
 	}
 	recordPlacement(x, y, colorIndex, caller, runtime.ChainHeight())
 	lastPlacedBlock.Set(callerKey, runtime.ChainHeight())
@@ -281,8 +315,8 @@ func SetPixel(cur realm, x, y, colorIndex int64) {
 // for the whole batch rather than per pixel -- SetPixel's own per-call
 // cooldown would otherwise reject every entry after the first within
 // the same block, since they all execute in the same transaction/
-// height. Fee is the sum of FeePerPixelUgnot across every entry that
-// doesn't match the current official target, collected as one payment.
+// height. Fee is the sum of pixelFee(x, y, c) across every entry,
+// collected as one payment.
 func SetPixels(cur realm, encoded string) {
 	runtime.AssertOriginCall()
 	entries := strings.Split(encoded, ";")
@@ -320,9 +354,7 @@ func SetPixels(cur realm, encoded string) {
 		if c < 0 || c >= int64(len(palette)) {
 			panic("invalid color index")
 		}
-		if !isOfficialTarget(x, y, c) {
-			feeTotal += FeePerPixelUgnot
-		}
+		feeTotal += pixelFee(x, y, c)
 		xs[i], ys[i], cs[i] = x, y, c
 	}
 
