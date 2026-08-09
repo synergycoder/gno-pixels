@@ -108,6 +108,17 @@ var (
 	communityDesignNames avl.Tree // designID -> display name
 	communityDesignCount int64
 
+	// firstPlacement (see the commented-out block below recordPlacement)
+	// would have snapshotted each address's first placement on-chain for
+	// a future airdrop -- deliberately left disabled: it's an extra write
+	// bundled into a placer's own transaction, so it's an extra cost to
+	// them for a snapshot that only benefits a future project they don't
+	// get anything from today. Decided to build that snapshot by scanning
+	// transaction history off-chain instead, whenever the airdrop
+	// actually happens -- zero cost to placers now, at the price of that
+	// scan needing to be built later (and needing sapphire-1 indexer
+	// support confirmed at that point, which hasn't been checked yet).
+
 	totalPlacements int64
 	occupiedCells   int64
 	expansionsCount int64
@@ -193,7 +204,29 @@ func recordPlacement(x, y, colorIndex int64, placer address, height int64) {
 	placedBy.Set(k, placer.String())
 	placedAtHeight.Set(k, height)
 	bumpPlacementCount(placer)
+	// recordFirstPlacementIfNeeded(placer, x, y, colorIndex, height) -- see below
 }
+
+// --- disabled: on-chain first-placement snapshot for a future airdrop ---
+//
+// Built and verified live on topaz-1 (pixelparttest1): correctly captured
+// each address's first (x, y, colorIndex, blockHeight) exactly once,
+// including through ImportHistoricalPixel's migration-replay path, and
+// never overwritten by that address's later placements. Left here,
+// commented out, in case the off-chain-scan approach turns out not to
+// work for sapphire-1 and this needs to come back.
+//
+// type firstPlacementEntry struct {
+// 	X, Y, ColorIndex, BlockHeight int64
+// }
+//
+// func recordFirstPlacementIfNeeded(placer address, x, y, colorIndex, height int64) {
+// 	key := placer.String()
+// 	if _, ok := firstPlacement.Get(key).(firstPlacementEntry); ok {
+// 		return
+// 	}
+// 	firstPlacement.Set(key, firstPlacementEntry{X: x, Y: y, ColorIndex: colorIndex, BlockHeight: height})
+// }
 
 // bumpPlacementCount counts every successful placement action (including
 // recolors and erasures of an existing cell) toward the leaderboard --
@@ -566,6 +599,47 @@ func TopPlacers(n int64) string {
 	}
 	return b.String()
 }
+
+// FirstPlacementOf/ListParticipants/ParticipantCount -- disabled along
+// with firstPlacement/recordFirstPlacementIfNeeded above. See that
+// comment for why. Query shapes kept here for reference in case the
+// off-chain scan doesn't pan out for sapphire-1 and this needs reviving.
+//
+// func FirstPlacementOf(addr address) (x, y, colorIndex, blockHeight int64, found bool) {
+// 	entry, ok := firstPlacement.Get(addr.String()).(firstPlacementEntry)
+// 	if !ok {
+// 		return 0, 0, 0, 0, false
+// 	}
+// 	return entry.X, entry.Y, entry.ColorIndex, entry.BlockHeight, true
+// }
+//
+// func ListParticipants() string {
+// 	var b strings.Builder
+// 	first := true
+// 	firstPlacement.Iterate("", "", func(k string, v any) bool {
+// 		entry := v.(firstPlacementEntry)
+// 		if !first {
+// 			b.WriteString(";")
+// 		}
+// 		first = false
+// 		b.WriteString(k + "," +
+// 			strconv.FormatInt(entry.X, 10) + "," +
+// 			strconv.FormatInt(entry.Y, 10) + "," +
+// 			strconv.FormatInt(entry.ColorIndex, 10) + "," +
+// 			strconv.FormatInt(entry.BlockHeight, 10))
+// 		return false
+// 	})
+// 	return b.String()
+// }
+//
+// func ParticipantCount() int64 {
+// 	n := int64(0)
+// 	firstPlacement.Iterate("", "", func(k string, v any) bool {
+// 		n++
+// 		return false
+// 	})
+// 	return n
+// }
 
 func CooldownRemaining(addr address) int64 {
 	last, ok := lastPlacedBlock.Get(addr.String()).(int64)
