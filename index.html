@@ -27,13 +27,26 @@
   header { text-align: center; margin-bottom: 2rem; }
   header h1 { font-size: 1.8rem; margin: 0 0 0.3rem; }
   header p { color: var(--text-muted); font-size: 0.95rem; margin: 0; }
-  .wallet-bar { display: flex; justify-content: center; margin: 1.25rem 0; }
+  .wallet-bar { display: flex; justify-content: center; align-items: center; gap: 0.6rem; margin: 1.25rem 0; flex-wrap: wrap; }
   .adena-btn {
     padding: 0.6rem 1.3rem; border-radius: 8px; border: 1px dashed var(--border);
     background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 600;
   }
   .adena-btn:hover { background: var(--border-soft); border-color: var(--accent); }
   .adena-btn.connected { border-style: solid; border-color: var(--success); color: var(--success); }
+  .adena-btn.install { border-color: var(--accent); color: var(--accent); }
+  .wallet-chip {
+    display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 1rem; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg-elevated); font-size: 0.85rem;
+  }
+  .wallet-chip .addr { font-family: ui-monospace, monospace; color: var(--text-muted); }
+  .wallet-chip .balance { font-weight: 700; }
+  .wallet-chip .balance.zero { color: #f87171; }
+  .faucet-btn {
+    padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid var(--success); background: none;
+    color: var(--success); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 700; text-decoration: none;
+  }
+  .faucet-btn:hover { background: rgba(74,222,128,0.12); }
   .status { color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0.5rem 0; }
   .status.error { color: #f87171; }
 
@@ -88,7 +101,14 @@
   <p>A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
 </header>
 
-<div class="wallet-bar"><button class="adena-btn" id="connectBtn">Connect Adena</button></div>
+<div class="wallet-bar">
+  <button class="adena-btn" id="connectBtn">Connect Adena</button>
+  <span class="wallet-chip" id="walletChip" style="display:none">
+    <span class="addr" id="walletAddr"></span>
+    <span class="balance" id="walletBalance"></span>
+  </span>
+  <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener" style="display:none">🚰 Get testnet tokens</a>
+</div>
 <p class="status" id="topStatus">Loading…</p>
 
 <div class="help-section" id="helpSection" style="display:none">
@@ -182,6 +202,30 @@ function parseGnoEvalString(raw) {
 
 // ---------- Adena wallet ----------
 let connectedAddress = null;
+let adenaAvailable = null; // null = not checked yet, true/false once known
+
+// Content scripts (Adena's included) commonly inject at "document_idle",
+// which can run AFTER a page's own inline <script> has already executed
+// during HTML parsing -- so a single synchronous `typeof window.adena`
+// check right at page load can catch it mid-injection and see
+// "undefined" even though it appears a few hundred ms later. Poll
+// briefly instead of checking once. Same pattern already proven in the
+// sibling gno-observer project.
+function waitForAdena(timeoutMs = 2000, intervalMs = 150) {
+  return new Promise((resolve) => {
+    if (typeof window.adena !== "undefined") { resolve(true); return; }
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if (typeof window.adena !== "undefined") {
+        clearInterval(timer);
+        resolve(true);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, intervalMs);
+  });
+}
 
 async function ensureAdenaConnected() {
   if (typeof window.adena === "undefined") {
@@ -200,20 +244,79 @@ async function ensureAdenaConnected() {
   return connectedAddress;
 }
 
-function applyConnectedUI(address) {
+// Native GNOT balance lives directly on the account (auth/accounts),
+// not behind any realm call -- plain JSON response, not a gno-eval
+// string: {"BaseAccount":{"coins":"19278953ugnot",...}}, or the literal
+// text "null" for an address with no on-chain record (never funded).
+// Same query shape as gno-observer's own fetchNativeBalance.
+async function fetchBalanceUgnot(address) {
+  const raw = await abciQuery("auth/accounts/" + address, "");
+  if (!raw || raw.trim() === "null") return 0;
+  const parsed = JSON.parse(raw);
+  const coins = (parsed && parsed.BaseAccount && parsed.BaseAccount.coins) || "";
+  const m = /^(\d+)ugnot$/.exec(coins.trim());
+  return m ? Number(m[1]) : 0;
+}
+
+function formatGnot(ugnot) {
+  return (ugnot / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " GNOT";
+}
+
+// Single button covers all three states rather than swapping in a
+// separate element -- "not installed" isn't a variant of "connect", it
+// needs a different action entirely (open adena.app instead of
+// AddEstablish), so the click handler branches on adenaAvailable/
+// connected state instead of the button itself changing type.
+function renderWalletBar() {
   const btn = document.getElementById("connectBtn");
-  btn.textContent = "✓ " + address.slice(0, 6) + "…" + address.slice(-4);
-  btn.classList.add("connected");
-  btn.title = "Click to disconnect";
+  const chip = document.getElementById("walletChip");
+  const faucetBtn = document.getElementById("faucetBtn");
+
+  if (connectedAddress) {
+    btn.style.display = "none";
+    chip.style.display = "";
+    document.getElementById("walletAddr").textContent =
+      connectedAddress.slice(0, 6) + "…" + connectedAddress.slice(-4);
+    return;
+  }
+  chip.style.display = "none";
+  faucetBtn.style.display = "none";
+  btn.style.display = "";
+  btn.classList.remove("connected");
+  if (adenaAvailable === false) {
+    btn.textContent = "Install Adena";
+    btn.classList.add("install");
+  } else {
+    btn.textContent = "Connect Adena";
+    btn.classList.remove("install");
+  }
+}
+
+async function refreshBalance() {
+  if (!connectedAddress) return;
+  const balanceEl = document.getElementById("walletBalance");
+  const faucetBtn = document.getElementById("faucetBtn");
+  balanceEl.textContent = "…";
+  try {
+    const ugnot = await fetchBalanceUgnot(connectedAddress);
+    balanceEl.textContent = formatGnot(ugnot);
+    balanceEl.classList.toggle("zero", ugnot === 0);
+    faucetBtn.style.display = ugnot === 0 ? "" : "none";
+  } catch {
+    balanceEl.textContent = "balance unavailable";
+  }
+}
+
+function applyConnectedUI(address) {
+  connectedAddress = address;
+  renderWalletBar();
+  refreshBalance();
 }
 
 document.getElementById("connectBtn").addEventListener("click", async () => {
   const btn = document.getElementById("connectBtn");
-  if (btn.classList.contains("connected")) {
-    connectedAddress = null;
-    btn.textContent = "Connect Adena";
-    btn.classList.remove("connected");
-    loadCanvas();
+  if (adenaAvailable === false) {
+    window.open("https://adena.app/", "_blank", "noopener");
     return;
   }
   btn.disabled = true;
@@ -231,13 +334,15 @@ document.getElementById("connectBtn").addEventListener("click", async () => {
   }
 });
 
-// Adena tracks per-domain approval itself, so a returning visitor's
-// AddEstablish() resolves silently (no popup) -- worth attempting on
-// load so the wallet state doesn't look disconnected for no reason,
-// but a first-time visitor shouldn't be interrupted by a connect
-// prompt before clicking anything, so failures here are silent.
-(async function autoReconnect() {
-  if (typeof window.adena === "undefined") return;
+(async function initWallet() {
+  adenaAvailable = await waitForAdena();
+  renderWalletBar();
+  if (!adenaAvailable) return;
+  // Adena tracks per-domain approval itself, so a returning visitor's
+  // AddEstablish() resolves silently (no popup) -- worth attempting on
+  // load so the wallet state doesn't look disconnected for no reason,
+  // but a first-time visitor shouldn't be interrupted by a connect
+  // prompt before clicking anything, so failures here are silent.
   try {
     const address = await ensureAdenaConnected();
     applyConnectedUI(address);
