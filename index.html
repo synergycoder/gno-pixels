@@ -148,8 +148,11 @@
   .swatch { width: 32px; height: 32px; border-radius: 7px; cursor: pointer; border: 2px solid var(--border); }
   .swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
 
-  .stats-row { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted); }
+  .stats-row { display: flex; justify-content: center; align-items: center; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted); }
   .stats-row b { color: var(--text); }
+  .live-indicator { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: live-pulse 2s ease-in-out infinite; }
+  @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
   footer { text-align: center; margin-top: 3rem; font-size: 0.8rem; color: var(--text-muted); }
   footer a { color: var(--accent); }
@@ -229,6 +232,7 @@
     <span id="occupiedStat"></span>
     <span id="expansionsStat"></span>
     <span id="cooldownStat"></span>
+    <span class="live-indicator" title="This board refreshes itself automatically"><span class="live-dot"></span>Live</span>
   </div>
 </div>
 
@@ -778,6 +782,27 @@ async function loadLeaderboard() {
 document.getElementById("titleHome").addEventListener("click", () => {
   if (!gridWidth || !gridHeight) return;
   scrollCellIntoView(originX + Math.floor(gridWidth / 2), originY + Math.floor(gridHeight / 2));
+});
+
+// ---------- live polling ----------
+//
+// loadCanvas() is safe to call blindly on a timer -- it no-ops via
+// loadInFlight if a previous call is still in flight, and only rebuilds
+// the board's DOM (buildBoard) when its dimensions actually changed, so
+// a same-size poll just repaints cell colors in place without disturbing
+// scroll position, zoom, or the palette selection. Paused while the tab
+// is hidden so a backgrounded tab doesn't keep polling the public RPC
+// for no one to see, and catches up immediately when it becomes visible
+// again instead of waiting for the next tick.
+const POLL_INTERVAL_MS = 8000;
+function pollLive() {
+  if (document.visibilityState !== "visible") return;
+  loadCanvas();
+  loadLeaderboard();
+}
+setInterval(pollLive, POLL_INTERVAL_MS);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") pollLive();
 });
 
 initDragToPan();
