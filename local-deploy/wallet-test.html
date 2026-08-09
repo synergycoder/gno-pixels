@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GNO Pixels — Adena Wallet Test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --accent: #6c5ce7; --accent-strong: #8274ef; --bg: #0b0b0f; --bg-elevated: #16161c;
+    --border: rgba(255,255,255,0.14); --text: #ecebf5; --text-muted: #9997ab;
+    --success: #4ade80; --error: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 640px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; line-height: 1.55;
+  }
+  h1 { font-size: 1.3rem; }
+  h2 { font-size: 1.05rem; margin: 2.5rem 0 0.5rem; }
+  .note {
+    background: rgba(255, 180, 0, 0.1); border: 1px solid rgba(255, 180, 0, 0.35); border-radius: 10px;
+    padding: 0.9rem 1.1rem; font-size: 0.86rem; margin: 1.25rem 0;
+  }
+  .field { margin: 1rem 0; }
+  .field label { display: block; margin-bottom: 0.3rem; color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .field input { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; }
+  code { font-family: ui-monospace, monospace; background: var(--bg-elevated); padding: 0.15rem 0.4rem; border-radius: 4px; word-break: break-all; }
+  button {
+    padding: 0.7rem 1.4rem; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent);
+    color: #fff; cursor: pointer; font-family: inherit; font-size: 0.95rem; font-weight: 700;
+  }
+  button:hover { background: var(--accent-strong); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { font-size: 0.86rem; margin-top: 0.75rem; white-space: pre-wrap; word-break: break-word; }
+  .status.error { color: var(--error); }
+  .status.success { color: var(--success); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+</style>
+</head>
+<body>
+
+<h1>GNO Pixels — Adena Wallet Test Page</h1>
+<p>A throwaway local page for testing two things with your <strong>real Adena wallet</strong> before we commit to redeploying the real realm: sending GNOT on sapphire-1 (since Adena's own Send screen has no preset for it), and a real paid pixel placement against an already-deployed test realm with the new fee logic.</p>
+
+<div class="note">Nothing here touches the live production realm or site. Both actions below broadcast real transactions on testnet (real testnet GNOT, no real-world value) — you'll get Adena's own approval popup before anything is signed.</div>
+
+<h2>1. Send GNOT to the project wallet (sapphire-1)</h2>
+<p>Connects to whichever account is active in Adena and sends a plain bank transfer on sapphire-1, bypassing Adena's own network picker entirely (same trick our deploy page already uses successfully for sapphire-1).</p>
+<div class="field"><label>To address</label><input id="sendTo" type="text" value="g188mapat33awn7r9uk08l0jc9my0n07fpmspxel"></div>
+<div class="field"><label>Amount (GNOT)</label><input id="sendAmount" type="text" placeholder="e.g. 10"></div>
+<p><button id="sendBtn">Connect Adena &amp; Send</button></p>
+<p class="status" id="sendStatus"></p>
+
+<hr>
+
+<h2>2. Test a paid pixel placement (topaz-1 test realm)</h2>
+<p>Places a pixel on <code id="testPkgPath"></code> — a throwaway realm on <strong>topaz-1</strong> (not sapphire-1) already deployed with the exact fee logic we're proposing: cell <code>(10,10)</code> is registered as the free official target with color <strong>white</strong>. Try:</p>
+<ul style="font-size:0.86rem; color:var(--text-muted);">
+  <li><code>(10,10) white</code> → should place for free, no popup asking for funds</li>
+  <li><code>(10,10) gray</code> → should ask you to attach 1 GNOT (the "vandalism" rate — overwriting the official cell with the wrong color)</li>
+  <li>any other coordinate → should ask you to attach 0.1 GNOT (the normal rate)</li>
+</ul>
+<div class="field"><label>X</label><input id="testX" type="text" value="10"></div>
+<div class="field"><label>Y</label><input id="testY" type="text" value="10"></div>
+<div class="field"><label>Color index (0=black,1=white,2=gray,3=red,4=orange,5=yellow,6=green,7=blue,8=purple)</label><input id="testColor" type="text" value="1"></div>
+<p><button id="testPlaceBtn">Connect Adena &amp; Place</button></p>
+<p class="status" id="testStatus"></p>
+
+<script>
+const SAPPHIRE = { chainId: "sapphire-1", rpcUrl: "https://rpc.sapphire.testnets.gno.land" };
+const TOPAZ = { chainId: "topaz-1", rpcUrl: "https://rpc.topaz.testnets.gno.land" };
+const TEST_PKG_PATH = "gno.land/r/g1w7kytlgsgstspzlpy4fdtd9uqf0ga2dzud4wzv/pixelfeetest4";
+const FEE_PER_PIXEL_UGNOT = 100000;
+const VANDALISM_FEE_UGNOT = 1000000;
+document.getElementById("testPkgPath").textContent = TEST_PKG_PATH;
+
+async function ensureAdena() {
+  if (typeof window.adena === "undefined") throw new Error("Adena not detected — install it from adena.app, then reload this page.");
+  const establishRes = await window.adena.AddEstablish("GNO Pixels Wallet Test");
+  const already = /already connected/i.test(establishRes.message || "");
+  if (establishRes.status !== "success" && !already) throw new Error(establishRes.message || "Connection request was not approved.");
+  const accountRes = await window.adena.GetAccount();
+  if (accountRes.status !== "success" || !accountRes.data || !accountRes.data.address) throw new Error(accountRes.message || "Could not read the connected account.");
+  return accountRes.data.address;
+}
+
+function setStatus(id, text, cls) {
+  const el = document.getElementById(id);
+  el.className = "status" + (cls ? " " + cls : "");
+  el.textContent = text;
+}
+
+document.getElementById("sendBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("sendBtn");
+  const to = document.getElementById("sendTo").value.trim();
+  const amountGnot = Number(document.getElementById("sendAmount").value);
+  if (!to || !amountGnot || amountGnot <= 0) { setStatus("sendStatus", "Fill in a destination and a positive amount.", "error"); return; }
+  const amountUgnot = Math.round(amountGnot * 1e6);
+  btn.disabled = true;
+  setStatus("sendStatus", "Connecting to Adena…");
+  try {
+    const from = await ensureAdena();
+    setStatus("sendStatus", `Sending ${amountGnot} GNOT from ${from} to ${to}…`);
+    const res = await window.adena.DoContract({
+      messages: [{
+        type: "/bank.MsgSend",
+        value: { from_address: from, to_address: to, amount: `${amountUgnot}ugnot` },
+      }],
+      networkInfo: SAPPHIRE,
+    });
+    if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
+    setStatus("sendStatus", "Sent!\n" + JSON.stringify(res.data || res, null, 2), "success");
+  } catch (err) {
+    setStatus("sendStatus", "Failed: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("testPlaceBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("testPlaceBtn");
+  const x = document.getElementById("testX").value.trim();
+  const y = document.getElementById("testY").value.trim();
+  const c = document.getElementById("testColor").value.trim();
+  btn.disabled = true;
+  setStatus("testStatus", "Connecting to Adena…");
+  try {
+    const address = await ensureAdena();
+    const isOfficial = x === "10" && y === "10" && c === "1";
+    const isVandalism = x === "10" && y === "10" && c !== "1";
+    const feeUgnot = isOfficial ? 0 : isVandalism ? VANDALISM_FEE_UGNOT : FEE_PER_PIXEL_UGNOT;
+    setStatus("testStatus", `Placing (${x}, ${y}) color ${c} — attaching ${feeUgnot} ugnot (${(feeUgnot / 1e6).toFixed(1)} GNOT)…`);
+    const res = await window.adena.DoContract({
+      messages: [{
+        type: "/vm.m_call",
+        value: {
+          caller: address, send: feeUgnot > 0 ? `${feeUgnot}ugnot` : "",
+          pkg_path: TEST_PKG_PATH, func: "SetPixel", args: [x, y, c],
+        },
+      }],
+      networkInfo: TOPAZ,
+    });
+    if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
+    setStatus("testStatus", "Placed!\n" + JSON.stringify(res.data || res, null, 2), "success");
+  } catch (err) {
+    setStatus("testStatus", "Failed: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+
+</body>
+</html>
