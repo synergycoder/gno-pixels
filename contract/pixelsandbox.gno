@@ -65,6 +65,13 @@ const (
 	// transaction's gas/arg-size reasonable and bounds the worst-case
 	// payment amount a caller has to attach.
 	MaxBulkPixels = 10
+
+	// MaxCommunityDesignPixels bounds a single submitted design -- the
+	// per-byte storage deposit already prices submission naturally, this
+	// is just a hard ceiling against one submission dominating the
+	// realm's storage.
+	MaxCommunityDesignPixels = 4000
+	MaxCommunityDesignNameLen = 60
 )
 
 var palette = []string{
@@ -89,6 +96,17 @@ var (
 	lastPlacedBlock avl.Tree
 	placementCounts avl.Tree // address.String() -> int64, total successful placements (leaderboard)
 	officialTarget  avl.Tree // key(x,y) -> int64 colorIndex, owner-curated free-to-place design
+
+	// communityDesigns holds every community-submitted design (image trace
+	// or typed text, already positioned in absolute board coordinates by
+	// whoever submitted it) -- unlike officialTarget these are NOT free;
+	// placing into one costs the normal FeePerPixelUgnot like anywhere
+	// else, submission just makes the design visible to everyone as a
+	// "help fill this in" target instead of only the submitter's own
+	// browser knowing its shape.
+	communityDesigns     avl.Tree // designID -> encoded "x,y,c;x,y,c;..." string
+	communityDesignNames avl.Tree // designID -> display name
+	communityDesignCount int64
 
 	totalPlacements int64
 	occupiedCells   int64
@@ -248,6 +266,76 @@ func SetOfficialTarget(cur realm, encoded string) {
 		}
 		officialTarget.Set(key(x, y), c)
 	}
+}
+
+// SubmitCommunityDesign registers a new community-submitted design --
+// anyone can call this, not just the owner. encoded is
+// "x,y,c;x,y,c;...", already in absolute board coordinates (the
+// submitter positions it client-side before submitting). Placing any
+// of these cells still costs the normal FeePerPixelUgnot, same as any
+// other free-form cell -- this just makes the design's shape and
+// position visible on-chain so other visitors' browsers can render a
+// progress bar for it and help fill it in, the same way everyone
+// already helps finish the owner-curated logo.
+func SubmitCommunityDesign(cur realm, name string, encoded string) string {
+	runtime.AssertOriginCall()
+	if len(name) > MaxCommunityDesignNameLen {
+		panic(ufmt.Sprintf("name too long: max %d characters", MaxCommunityDesignNameLen))
+	}
+	if encoded == "" {
+		panic("empty design")
+	}
+	entries := strings.Split(encoded, ";")
+	if len(entries) > MaxCommunityDesignPixels {
+		panic(ufmt.Sprintf("design too large: %d pixels, max %d", len(entries), MaxCommunityDesignPixels))
+	}
+	for _, entry := range entries {
+		parts := strings.SplitN(entry, ",", 3)
+		if len(parts) != 3 {
+			panic("malformed entry: " + entry)
+		}
+		_, err1 := strconv.ParseInt(parts[0], 10, 64)
+		_, err2 := strconv.ParseInt(parts[1], 10, 64)
+		c, err3 := strconv.ParseInt(parts[2], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			panic("malformed entry: " + entry)
+		}
+		if c < 0 || c >= int64(len(palette)) {
+			panic("invalid color index in design")
+		}
+	}
+	id := "d" + strconv.FormatInt(communityDesignCount, 10)
+	communityDesignCount++
+	communityDesigns.Set(id, encoded)
+	communityDesignNames.Set(id, name)
+	return id
+}
+
+// ListCommunityDesigns returns "id,name,pixelCount;id,name,pixelCount;..."
+// for every submitted design, in submission order.
+func ListCommunityDesigns() string {
+	var b strings.Builder
+	for i := int64(0); i < communityDesignCount; i++ {
+		id := "d" + strconv.FormatInt(i, 10)
+		encoded, ok := communityDesigns.Get(id).(string)
+		if !ok {
+			continue
+		}
+		name, _ := communityDesignNames.Get(id).(string)
+		count := len(strings.Split(encoded, ";"))
+		if i > 0 {
+			b.WriteString(";")
+		}
+		b.WriteString(id + "," + name + "," + strconv.FormatInt(int64(count), 10))
+	}
+	return b.String()
+}
+
+// GetCommunityDesign returns the raw "x,y,c;x,y,c;..." for one design,
+// or "" if id doesn't exist.
+func GetCommunityDesign(id string) string {
+	encoded, _ := communityDesigns.Get(id).(string)
+	return encoded
 }
 
 // collectPayment verifies at least feeUgnot of ugnot was attached to
