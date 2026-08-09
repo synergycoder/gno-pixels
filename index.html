@@ -46,13 +46,15 @@
      within the leftover space next to the wallet bar. */
   .site-header-spacer { min-width: 0; }
   .site-header-center { grid-column: 2; text-align: right; }
-  .wallet-bar { grid-column: 3; justify-self: end; }
+  .wallet-col { grid-column: 3; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+  .network-note { font-size: 0.72rem; color: var(--text-muted); text-align: right; }
+  .network-note strong { color: var(--text); }
   .site-header h1 {
     font-family: "Press Start 2P", "Courier New", monospace;
-    font-size: 0.95rem; line-height: 1.4; letter-spacing: 0.02em; margin: 0;
+    font-size: 1.9rem; line-height: 1.4; letter-spacing: 0.02em; margin: 0;
     display: inline-block; cursor: pointer;
   }
-  .title-icon { height: 1.4em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
+  .title-icon { height: 2.8em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
   .realm-link { display: block; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; margin-top: 0.2rem; }
   .realm-link:hover { color: var(--accent); text-decoration: underline; }
   .tagline { color: var(--text-muted); font-size: 0.95rem; margin: 0 0 1.5rem; text-align: center; }
@@ -178,14 +180,17 @@
       <h1 id="titleHome" title="Back to center"><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
       <a class="realm-link" href="https://sapphire.testnets.gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixelsandbox" target="_blank" rel="noopener">View realm ↗</a>
     </div>
-    <div class="wallet-bar">
-      <button class="adena-btn" id="connectBtn">Connect Adena</button>
-      <span class="wallet-chip" id="walletChip" style="display:none">
-        <span class="addr" id="walletAddr"></span>
-        <span class="balance" id="walletBalance"></span>
-        <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
-      </span>
-      <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener" style="display:none">🚰 Get testnet tokens</a>
+    <div class="wallet-col">
+      <div class="wallet-bar">
+        <button class="adena-btn" id="connectBtn">Connect Adena</button>
+        <span class="wallet-chip" id="walletChip" style="display:none">
+          <span class="addr" id="walletAddr"></span>
+          <span class="balance" id="walletBalance"></span>
+          <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
+        </span>
+        <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener" style="display:none">🚰 Get testnet tokens</a>
+      </div>
+      <div class="network-note">⚠️ You're on <strong>sapphire-1 testnet</strong> — not real funds</div>
     </div>
   </div>
   <p class="status" id="topStatus">Loading…</p>
