@@ -509,17 +509,17 @@ async function loadCanvas() {
   const statusEl = document.getElementById("topStatus");
   const appEl = document.getElementById("app");
   try {
-    const boundsRaw = await abciQuery(PIXEL_REALM_PATH + ".Bounds()", "");
+    const boundsRaw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".Bounds()");
     const [minX, maxX, minY, maxY] = parseGnoEvalAllNumbers(boundsRaw);
     originX = minX; originY = minY;
     const w = maxX - minX + 1, h = maxY - minY + 1;
 
     const [snapshotRaw, paletteRaw, totalRaw, occupiedRaw, expansionsRaw] = await Promise.all([
-      abciQuery(PIXEL_REALM_PATH + ".Snapshot()", ""),
-      abciQuery(PIXEL_REALM_PATH + ".PaletteCSV()", ""),
-      abciQuery(PIXEL_REALM_PATH + ".TotalPlacements()", ""),
-      abciQuery(PIXEL_REALM_PATH + ".OccupiedCells()", ""),
-      abciQuery(PIXEL_REALM_PATH + ".ExpansionsCount()", ""),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".Snapshot()"),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".PaletteCSV()"),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".TotalPlacements()"),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".OccupiedCells()"),
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ExpansionsCount()"),
     ]);
     lastSnapshotStr = parseGnoEvalString(snapshotRaw) || "";
     paletteColors = (parseGnoEvalString(paletteRaw) || "").split(",").filter(Boolean);
@@ -542,7 +542,7 @@ async function loadCanvas() {
 
     const cooldownEl = document.getElementById("cooldownStat");
     if (connectedAddress) {
-      const cdRaw = await abciQuery(PIXEL_REALM_PATH + `.CooldownRemaining(${JSON.stringify(connectedAddress)})`, "");
+      const cdRaw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + `.CooldownRemaining(${JSON.stringify(connectedAddress)})`);
       const cd = parseGnoEvalNumber(cdRaw);
       cooldownEl.textContent = cd > 0 ? `Cooldown: ${cd} block(s)` : "Ready to place";
     } else {
