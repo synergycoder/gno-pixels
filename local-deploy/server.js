@@ -245,6 +245,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/bounds") {
+    try {
+      const expr = `${PKG_PATH}.Bounds()`;
+      const data = Buffer.from(expr).toString("base64");
+      const url = `${RPC_URL}/abci_query?path=%22vm%2Fqeval%22&data=%22${encodeURIComponent(data)}%22`;
+      const rpcRes = await fetch(url);
+      const json = await rpcRes.json();
+      const raw = Buffer.from(json.result.response.ResponseBase.Data, "base64").toString("utf8");
+      const nums = [...raw.matchAll(/-?\d+(?=\s+int64\))/g)].map((m) => Number(m[0]));
+      const [minX, maxX, minY, maxY] = nums;
+      sendJson(res, 200, { minX, maxX, minY, maxY, width: maxX - minX + 1, height: maxY - minY + 1 });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/forceexpand") {
+    try {
+      const payload = await readBody(req);
+      if (!payload.keyringHome || !payload.keyName || !payload.password) {
+        sendJson(res, 400, { error: "keyringHome, keyName, and password are required" });
+        return;
+      }
+      const buildArgs = (opts) => callArgs({ ...opts, func: "ForceExpand", args: [] });
+      const sim = await simulate(buildArgs, payload);
+      const result = await broadcast(buildArgs, { ...payload, gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot });
+      sendJson(res, 200, { ...sim, ...result });
+    } catch (err) {
+      sendJson(res, 500, { error: errText(err) });
+    }
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/prepopulate/start") {
     try {
       const payload = await readBody(req);

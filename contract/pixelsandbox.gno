@@ -26,8 +26,17 @@ import (
 )
 
 const (
-	InitialMinX, InitialMaxX = int64(0), int64(63)
-	InitialMinY, InitialMaxY = int64(0), int64(63)
+	// Starts at the full MaxBoardDim from genesis rather than the
+	// original 64x64-then-auto-expand design -- with real community
+	// placements landing right at the logo's edges as it neared
+	// completion, waiting for the 80%-occupancy trigger would mean
+	// people cramming free-form art tight against it first. Centered on
+	// (31.5, 31.5), the original 64-wide board's own center, so every
+	// existing target_pattern.js / migrated-pixel coordinate keeps
+	// exactly the same (x, y) and lands in the same place relative to
+	// the logo, just with far more breathing room around it.
+	InitialMinX, InitialMaxX = int64(-32), int64(95)
+	InitialMinY, InitialMaxY = int64(-32), int64(95)
 
 	MaxBoardDim = 128
 	ExpandStep  = 8
