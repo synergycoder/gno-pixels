@@ -270,6 +270,9 @@
   .modal-close:hover { background: var(--border-soft); color: var(--text); }
   .field-row { margin: 1rem 0; font-size: 0.85rem; color: var(--text-muted); }
   .field-row input[type="range"] { width: 100%; }
+  .slider-with-num { display: flex; align-items: center; gap: 0.6rem; }
+  .slider-with-num input[type="range"] { flex: 1; }
+  .slider-with-num .mini-count-input { flex: 0 0 auto; }
   .trace-canvas, .preview-canvas {
     image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px;
     max-width: 100%; display: block; margin: 1rem 0; cursor: crosshair; background: #000;
@@ -281,12 +284,23 @@
   .draw-grid { display: grid; width: max-content; }
   .draw-grid .draw-cell { width: 14px; height: 14px; border: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
   .draw-grid .draw-cell:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
-  .eraser-swatch {
+  .eraser-swatch, .draw-grid .draw-cell.empty {
     background-image:
       linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%),
       linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%);
-    background-size: 10px 10px; background-position: 0 0, 0 5px, 5px -5px, -5px 0px; background-color: #333;
+    background-color: #333;
   }
+  .eraser-swatch { background-size: 10px 10px; background-position: 0 0, 0 5px, 5px -5px, -5px 0px; }
+  /* Smaller tile for the 14px draw cells -- distinguishes a genuinely
+     untouched cell from one deliberately painted black (colorIndex 0),
+     which used to look pixel-identical (both solid black). */
+  .draw-grid .draw-cell.empty { background-size: 6px 6px; background-position: 0 0, 0 3px, 3px -3px, -3px 0px; }
+  .example-compare { display: flex; gap: 0.8rem; margin: 0.8rem 0; }
+  .example-item { flex: 1; text-align: center; }
+  .example-item p { font-size: 0.72rem; color: var(--text-muted); margin: 0.35rem 0 0; }
+  .example-thumb { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border: 1px solid var(--border); border-radius: 6px; background: #000; display: block; }
+  .checkbox-row { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted); margin: 0.9rem 0; cursor: pointer; }
+  .checkbox-row input[type="checkbox"] { margin-top: 0.15rem; flex: 0 0 auto; }
   .modal .primary-btn {
     padding: 0.65rem 1.3rem; border-radius: 8px; border: none; background: var(--accent);
     color: #fff; cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 700;
@@ -316,6 +330,7 @@
     background: none; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 600;
   }
   .tab-btn.active { border-color: var(--accent); color: var(--text); background: rgba(108,92,231,0.12); }
+  .tab-btn:disabled { opacity: 0.45; cursor: default; }
   #customTextInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; resize: vertical; }
   #suggestionInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.9rem; resize: vertical; }
   .suggestion-card {
@@ -427,11 +442,17 @@
         <p class="modal-hint">Click (or click-and-drag) to paint cells with the selected color. Pick 🧹 to erase a cell.</p>
         <div class="field-row">
           <label for="customDrawWidthSlider">Width: <span id="customDrawWidthLabel">20</span> cells</label>
-          <input type="range" id="customDrawWidthSlider" min="4" max="48" value="20">
+          <div class="slider-with-num">
+            <input type="range" id="customDrawWidthSlider" min="4" max="48" value="20">
+            <input type="number" id="customDrawWidthNum" class="mini-count-input" min="4" max="48" value="20" title="Exact width in cells">
+          </div>
         </div>
         <div class="field-row">
           <label for="customDrawHeightSlider">Height: <span id="customDrawHeightLabel">20</span> cells</label>
-          <input type="range" id="customDrawHeightSlider" min="4" max="48" value="20">
+          <div class="slider-with-num">
+            <input type="range" id="customDrawHeightSlider" min="4" max="48" value="20">
+            <input type="number" id="customDrawHeightNum" class="mini-count-input" min="4" max="48" value="20" title="Exact height in cells">
+          </div>
         </div>
         <div class="field-row">
           <label>Color</label>
@@ -468,6 +489,7 @@
       <p class="status" id="customTraceStatus"></p>
       <p class="status" id="customTraceCostEstimate"></p>
       <button type="button" class="secondary-btn" id="customAddLayerBtn" disabled>+ Add to design</button>
+      <button type="button" class="secondary-btn" id="customEditInDrawBtn" style="display:none">✏️ Fine-tune pixels in free draw</button>
 
       <div id="customLayersSection" style="display:none">
         <p class="modal-hint" style="margin-top:1.1rem">Your design so far — combining image and text stacks them into one piece, submitted and helped-with as a single design:</p>
@@ -493,13 +515,31 @@
 </div>
 
 <div class="modal-backdrop" id="imageWarningModalBackdrop" style="display:none">
-  <div class="modal" id="imageWarningModal" style="max-width:420px">
+  <div class="modal" id="imageWarningModal" style="max-width:520px">
     <button class="modal-close" id="imageWarningModalClose" type="button" title="Close">✕</button>
     <h2>⚠️ Before you upload</h2>
     <p class="modal-hint">The tracer only works well on images that are already simple and low-resolution — logos, icons, flat-color art. It also can't match colors it doesn't have: only the board's own 9-color palette is available, so anything outside that gets mapped to the closest color, which can come out wrong.</p>
+
+    <div class="example-compare">
+      <div class="example-item">
+        <canvas id="imageExampleBad" class="example-thumb"></canvas>
+        <p>❌ Too detailed — traces as noise</p>
+      </div>
+      <div class="example-item">
+        <canvas id="imageExampleGood" class="example-thumb"></canvas>
+        <p>✅ Simple and flat — traces cleanly</p>
+      </div>
+    </div>
+
     <p class="modal-hint">If your image doesn't fit that (photos, gradients, lots of detail), we recommend <strong>free draw</strong> instead — you get full control over exactly which of the 9 colors lands on each cell.</p>
+
+    <label class="checkbox-row" for="imageWarningAck">
+      <input type="checkbox" id="imageWarningAck">
+      <span>I understand my image should already be simple and low-resolution, and that only the 9-color palette above is available — otherwise the colors can come out wrong.</span>
+    </label>
+
     <button type="button" class="secondary-btn" id="imageWarningSwitchToDraw">Use free draw instead</button>
-    <button type="button" class="primary-btn" id="imageWarningProceed" style="margin-left:0.6rem">Got it, continue to upload</button>
+    <button type="button" class="primary-btn" id="imageWarningProceed" style="margin-left:0.6rem" disabled>Got it, continue to upload</button>
   </div>
 </div>
 
@@ -1720,8 +1760,37 @@ function applyTrace(result) {
   document.getElementById("customTraceStatus").textContent = `${result.pixels.length} pixels traced (${result.width}×${result.height}).`;
   updateTraceCostEstimate();
   document.getElementById("customAddLayerBtn").disabled = result.pixels.length === 0;
+  document.getElementById("customEditInDrawBtn").style.display = result.pixels.length > 0 ? "" : "none";
   updateNextButtonState();
 }
+
+// Hands the current image/text trace over to the free-draw grid so
+// individual bad pixels (a messy auto-trace of a busy image, a letter
+// that came out lumpy) can be touched up by hand instead of starting
+// over. Reuses resizeDrawGrid's own dx/dy indexing since applyTrace's
+// {dx,dy,c} pixels are already in the same 0-based coordinate space as
+// customDrawGridData.
+function loadTraceIntoDrawGrid(pixels, width, height) {
+  customDrawW = width;
+  customDrawH = height;
+  const data = new Array(width * height).fill(null);
+  for (const p of pixels) {
+    const idx = p.dy * width + p.dx;
+    if (idx >= 0 && idx < data.length) data[idx] = p.c;
+  }
+  customDrawGridData = data;
+  document.getElementById("customDrawWidthSlider").value = Math.min(48, width);
+  document.getElementById("customDrawWidthNum").value = width;
+  document.getElementById("customDrawWidthLabel").textContent = width;
+  document.getElementById("customDrawHeightSlider").value = Math.min(48, height);
+  document.getElementById("customDrawHeightNum").value = height;
+  document.getElementById("customDrawHeightLabel").textContent = height;
+  renderDrawGridDom();
+  setCustomMode("draw", { preserveDrawData: true });
+}
+document.getElementById("customEditInDrawBtn").addEventListener("click", () => {
+  loadTraceIntoDrawGrid(customTracedPixels, customTraceWidth, customTraceHeight);
+});
 
 // ---------- combining multiple traces (image + text, etc.) into one design ----------
 //
@@ -1963,6 +2032,7 @@ function buildCustomDrawPalette() {
 function paintDrawCell(i, cell, colorOverride) {
   const color = colorOverride !== undefined ? colorOverride : customDrawColor;
   customDrawGridData[i] = color;
+  cell.classList.toggle("empty", color === null);
   cell.style.backgroundColor = color === null ? "" : paletteColors[color];
   updateDrawTrace();
 }
@@ -1979,6 +2049,7 @@ function makeDrawCell(i) {
   cell.className = "draw-cell";
   const v = customDrawGridData[i];
   if (v !== null && v !== undefined) cell.style.backgroundColor = paletteColors[v];
+  else cell.classList.add("empty");
   cell.addEventListener("mousedown", (e) => {
     e.preventDefault();
     drawPainting = true;
@@ -2043,22 +2114,39 @@ function updateDrawTrace() {
   updateNextButtonState();
 }
 
-document.getElementById("customDrawWidthSlider").addEventListener("input", (e) => {
-  document.getElementById("customDrawWidthLabel").textContent = e.target.value;
-  resizeDrawGrid(Number(e.target.value), customDrawH);
+// Slider (drag, coarse) and number input (type an exact value, e.g.
+// "37") both drive the same resize -- kept in sync in both directions
+// so whichever one someone used, the other reflects it.
+function setDrawWidth(w) {
+  w = Math.max(4, Math.min(48, Math.round(Number(w)) || 4));
+  document.getElementById("customDrawWidthSlider").value = w;
+  document.getElementById("customDrawWidthNum").value = w;
+  document.getElementById("customDrawWidthLabel").textContent = w;
+  resizeDrawGrid(w, customDrawH);
   updateDrawTrace();
-});
-document.getElementById("customDrawHeightSlider").addEventListener("input", (e) => {
-  document.getElementById("customDrawHeightLabel").textContent = e.target.value;
-  resizeDrawGrid(customDrawW, Number(e.target.value));
+}
+function setDrawHeight(h) {
+  h = Math.max(4, Math.min(48, Math.round(Number(h)) || 4));
+  document.getElementById("customDrawHeightSlider").value = h;
+  document.getElementById("customDrawHeightNum").value = h;
+  document.getElementById("customDrawHeightLabel").textContent = h;
+  resizeDrawGrid(customDrawW, h);
   updateDrawTrace();
-});
+}
+document.getElementById("customDrawWidthSlider").addEventListener("input", (e) => setDrawWidth(e.target.value));
+document.getElementById("customDrawWidthNum").addEventListener("change", (e) => setDrawWidth(e.target.value));
+document.getElementById("customDrawHeightSlider").addEventListener("input", (e) => setDrawHeight(e.target.value));
+document.getElementById("customDrawHeightNum").addEventListener("change", (e) => setDrawHeight(e.target.value));
 document.getElementById("customDrawClearBtn").addEventListener("click", () => {
   buildDrawGrid();
   updateDrawTrace();
 });
 
-function setCustomMode(mode) {
+// preserveDrawData skips the fresh-blank buildDrawGrid() call --
+// used when jumping into draw mode with data already loaded into
+// customDrawGridData (e.g. loadTraceIntoDrawGrid), so switching modes
+// doesn't wipe it right back out.
+function setCustomMode(mode, { preserveDrawData } = {}) {
   customMode = mode;
   document.getElementById("customTabImage").classList.toggle("active", mode === "image");
   document.getElementById("customTabText").classList.toggle("active", mode === "text");
@@ -2073,19 +2161,52 @@ function setCustomMode(mode) {
     retraceCurrentText();
   } else {
     buildCustomDrawPalette();
-    buildDrawGrid();
+    if (!preserveDrawData) buildDrawGrid();
     updateDrawTrace();
   }
 }
+// Real on-chain examples, baked in (not fetched live -- these are
+// already-submitted designs, illustrative reference points, not data
+// that needs to stay current): "Pepe" (d2), a clean 6x6 that traced
+// well, vs. an "Untitled design" (d7) that's mostly stray gray/black
+// noise from a busy source image. Coordinates are absolute board
+// positions as returned by GetCommunityDesign; drawExampleThumb
+// normalizes them to the thumbnail's own top-left.
+const IMAGE_EXAMPLE_GOOD_RAW = "-30,88,6;-29,88,6;-28,88,6;-27,88,6;-26,88,6;-25,88,6;-30,89,6;-29,89,1;-28,89,2;-27,89,6;-26,89,2;-25,89,1;-30,90,6;-29,90,6;-28,90,6;-27,90,6;-26,90,6;-25,90,6;-30,91,6;-29,91,3;-28,91,3;-27,91,3;-26,91,3;-25,91,3;-30,92,6;-29,92,6;-28,92,6;-27,92,6;-26,92,6;-25,92,6;-30,93,7;-29,93,7;-28,93,7;-27,93,7;-26,93,7;-25,93,7";
+const IMAGE_EXAMPLE_BAD_RAW = "82,13,2;83,13,2;84,13,2;66,14,2;75,14,2;76,14,2;78,14,2;80,14,2;81,14,2;82,14,2;83,14,2;84,14,2;66,15,2;68,15,2;71,15,2;73,15,2;78,15,2;79,15,2;80,15,2;81,15,2;82,15,2;83,15,2;84,15,2;61,16,2;62,16,2;64,16,2;66,16,2;72,16,2;77,16,2;78,16,2;79,16,2;80,16,2;82,16,2;83,16,2;63,17,2;76,17,1;77,17,2;78,17,2;79,17,2;80,17,2;82,17,2;83,17,2;64,18,2;74,18,2;75,18,2;76,18,2;77,18,2;79,18,2;81,18,2;83,18,2;84,18,2;65,19,2;66,19,2;73,19,2;74,19,2;75,19,2;76,19,2;83,19,2;84,19,2;62,20,2;72,20,2;73,20,2;78,20,2;81,20,2;82,20,2;70,21,2;71,21,1;72,21,2;69,22,2;70,22,1;71,22,2;68,23,2;69,23,1;70,23,2;77,23,2;80,23,2;61,24,2;67,24,2;68,24,2;72,24,2;76,24,2;79,24,2;84,24,2;66,25,2;67,25,1;68,25,2;77,25,2;65,26,1;66,26,2;67,26,2;77,26,2;63,27,2;64,27,2;65,27,2;67,27,2;68,27,2;69,27,2;70,27,2;76,28,2;77,28,2;74,29,2;75,29,2;76,29,2;77,29,2;80,30,0;81,30,2;84,30,2;63,31,1;64,31,1;65,31,1;66,31,1;67,31,2;84,31,2;61,32,2;62,32,2;63,32,2;64,32,2;65,32,1;66,32,1;67,32,2;68,32,2;61,33,2;62,33,2;63,33,2;64,33,1;65,33,1;66,33,1;67,33,2;61,34,2;62,34,2;63,34,2;64,34,1;65,34,1;66,34,1;67,34,2;61,35,1;62,35,1;63,35,1;64,35,1;65,35,1;66,35,1;67,35,2;61,36,2;62,36,1;63,36,1;64,36,1;65,36,1;66,36,1;67,36,2;68,36,2;81,36,2;83,36,2;62,37,1;63,37,1;64,37,1;65,37,1;66,37,1;81,37,2;63,38,2;80,39,2;76,41,2;70,45,2;73,45,2;67,46,2;65,48,2;63,50,2;65,50,2;66,53,2;63,54,2";
+
+function drawExampleThumb(canvasEl, raw) {
+  const entries = raw.split(";").filter(Boolean).map((e) => e.split(",").map(Number));
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of entries) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+  const w = maxX - minX + 1, h = maxY - minY + 1;
+  const scale = Math.max(1, Math.floor(90 / Math.max(w, h)));
+  canvasEl.width = w * scale;
+  canvasEl.height = h * scale;
+  const ctx = canvasEl.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+  for (const [x, y, c] of entries) {
+    ctx.fillStyle = paletteColors[c] || "#fff";
+    ctx.fillRect((x - minX) * scale, (y - minY) * scale, scale, scale);
+  }
+}
+
 // Shown once per page load, the first time someone opens the image
 // tab -- not on every click, since re-visiting the tab while flipping
 // between draw/text/image while designing shouldn't re-nag.
 let imageWarningShown = false;
 document.getElementById("customTabImage").addEventListener("click", () => {
   if (imageWarningShown) { setCustomMode("image"); return; }
+  drawExampleThumb(document.getElementById("imageExampleBad"), IMAGE_EXAMPLE_BAD_RAW);
+  drawExampleThumb(document.getElementById("imageExampleGood"), IMAGE_EXAMPLE_GOOD_RAW);
   document.getElementById("imageWarningModalBackdrop").style.display = "";
 });
+document.getElementById("imageWarningAck").addEventListener("change", (e) => {
+  document.getElementById("imageWarningProceed").disabled = !e.target.checked;
+});
 document.getElementById("imageWarningProceed").addEventListener("click", () => {
+  if (document.getElementById("imageWarningProceed").disabled) return;
   imageWarningShown = true;
   document.getElementById("imageWarningModalBackdrop").style.display = "none";
   setCustomMode("image");
