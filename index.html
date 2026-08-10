@@ -55,7 +55,7 @@
   .header-nav-link:disabled:hover { color: var(--text-muted); }
   .site-header-center { grid-column: 2; text-align: right; }
   .wallet-col { grid-column: 3; justify-self: end; }
-  .network-note { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+  .network-note { font-size: 0.72rem; color: var(--text-muted); line-height: 1.3; }
   .network-note strong { color: var(--text); }
   .site-header h1 {
     font-family: "Press Start 2P", "Courier New", monospace;
@@ -107,10 +107,13 @@
   }
   .wallet-chip .disconnect-btn:hover { color: var(--text); background: var(--border-soft); }
   .faucet-btn {
-    padding: 0.55rem 1rem; border-radius: 8px; border: 1px solid var(--success); background: none;
-    color: var(--success); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 700; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid var(--success); background: none;
+    color: var(--success); cursor: pointer; font-family: inherit; font-weight: 700; text-decoration: none;
   }
   .faucet-btn:hover { background: rgba(74,222,128,0.12); }
+  .faucet-icon { font-size: 1.5rem; line-height: 1; }
+  .faucet-label { font-size: 0.72rem; line-height: 1.25; text-align: left; }
   .status { color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0.5rem 0; }
   .status.error { color: #f87171; }
 
@@ -346,8 +349,8 @@
           <span class="balance" id="walletBalance"></span>
           <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
         </span>
-        <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener">🚰 Get testnet tokens</a>
-        <span class="network-note">⚠️ <strong>sapphire-1 testnet</strong> — not real funds</span>
+        <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener"><span class="faucet-icon">🚰</span><span class="faucet-label">Get testnet<br>tokens</span></a>
+        <span class="network-note">⚠️ <strong>sapphire-1 testnet</strong><br>not real funds</span>
       </div>
     </div>
   </div>
