@@ -250,7 +250,7 @@
     background: none; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 600;
   }
   .tab-btn.active { border-color: var(--accent); color: var(--text); background: rgba(108,92,231,0.12); }
-  #customTextInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; }
+  #customTextInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; resize: vertical; }
   #customDesignName { width: 100%; padding: 0.5rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.9rem; }
 
   .community-design-card {
@@ -356,8 +356,8 @@
       </div>
 
       <div id="customTextPane" style="display:none">
-        <p class="modal-hint">Type whatever you want to spell out — rendered with a real font, then traced into pixel art the same way an uploaded image is, so you can size it as compact as you like.</p>
-        <input type="text" id="customTextInput" maxlength="24" placeholder="e.g. HELLO WORLD">
+        <p class="modal-hint">Type whatever you want to spell out — rendered with a real font, then traced into pixel art the same way an uploaded image is, so you can size it as compact as you like. Press Enter for multiple lines.</p>
+        <textarea id="customTextInput" maxlength="100" rows="2" placeholder="e.g. HELLO WORLD"></textarea>
         <div class="field-row">
           <label for="customTextWidthSlider">Width: <span id="customTextWidthLabel">24</span> cells (height follows automatically)</label>
           <input type="range" id="customTextWidthSlider" min="4" max="48" value="24">
@@ -997,23 +997,30 @@ let customOrigin = { x: 0, y: 0 };
 // downsample has no such floor -- it degrades gracefully toward
 // unreadable as you shrink it, same tradeoff the image tracer already
 // makes legible via its own width slider and live cost estimate.
+// Multiple lines (Enter in the textarea) each get their own band on the
+// same render-then-downsample canvas, left-aligned against the widest
+// line -- one combined trace, not separate layers, since they're meant
+// to read as a single multi-line label.
 function traceTextToPixels(text, targetWidth, colorIndex) {
   const RENDER_PX = 40; // rendered large first so downsampling has real detail to work with
+  const FONT = `bold ${RENDER_PX}px "Segoe UI", -apple-system, sans-serif`;
+  const lines = text.split("\n");
   const measure = document.createElement("canvas").getContext("2d");
-  measure.font = `bold ${RENDER_PX}px "Segoe UI", -apple-system, sans-serif`;
-  const textWidthPx = Math.max(1, Math.ceil(measure.measureText(text).width));
-  const textHeightPx = Math.ceil(RENDER_PX * 1.3);
+  measure.font = FONT;
+  const maxLineWidthPx = Math.max(1, ...lines.map((line) => Math.ceil(measure.measureText(line).width) || 1));
+  const lineHeightPx = Math.ceil(RENDER_PX * 1.3);
+  const totalHeightPx = lineHeightPx * lines.length;
 
   const big = document.createElement("canvas");
-  big.width = textWidthPx;
-  big.height = textHeightPx;
+  big.width = maxLineWidthPx;
+  big.height = totalHeightPx;
   const bctx = big.getContext("2d");
-  bctx.font = `bold ${RENDER_PX}px "Segoe UI", -apple-system, sans-serif`;
+  bctx.font = FONT;
   bctx.fillStyle = "#fff";
   bctx.textBaseline = "top";
-  bctx.fillText(text, 0, 0);
+  lines.forEach((line, i) => bctx.fillText(line, 0, i * lineHeightPx));
 
-  const targetHeight = Math.max(1, Math.round(targetWidth * (textHeightPx / textWidthPx)));
+  const targetHeight = Math.max(1, Math.round(targetWidth * (totalHeightPx / maxLineWidthPx)));
   const small = document.createElement("canvas");
   small.width = targetWidth;
   small.height = targetHeight;
@@ -1236,16 +1243,20 @@ function updateNextButtonState() {
   document.getElementById("customNextBtn").disabled = customLayers.length === 0 && customTracedPixels.length === 0;
 }
 
-function combinedLayersBounds() {
-  const maxWidth = customLayers.reduce((m, l) => Math.max(m, l.width), 0);
+function layoutLayers(layers) {
+  const maxWidth = layers.reduce((m, l) => Math.max(m, l.width), 0);
   let y = 0;
   const placed = [];
-  customLayers.forEach((layer, i) => {
+  layers.forEach((layer, i) => {
     if (i > 0) y += LAYER_GAP;
     placed.push({ layer, xOffset: Math.floor((maxWidth - layer.width) / 2), yOffset: y });
     y += layer.height;
   });
   return { width: maxWidth, height: y, placed };
+}
+
+function combinedLayersBounds() {
+  return layoutLayers(customLayers);
 }
 
 function resetWorkingTrace() {
@@ -1309,11 +1320,17 @@ document.getElementById("customAddLayerBtn").addEventListener("click", () => {
   renderLayersList();
 });
 
+// Builds the combined design into customTracedPixels for step 2 WITHOUT
+// touching customLayers itself -- step 2 used to permanently push the
+// in-progress trace into customLayers here, so going Back and forward
+// again re-added it a second time on top of the already-flattened
+// result (reported bug: two copies of the same text stacked). Layers
+// stays exactly what step 1 shows; this only ever reads it.
 function finalizeDesignForPositioning() {
-  if (customTracedPixels.length) {
-    customLayers.push({ pixels: customTracedPixels, width: customTraceWidth, height: customTraceHeight });
-  }
-  const { width, height, placed } = combinedLayersBounds();
+  const layers = customTracedPixels.length
+    ? [...customLayers, { pixels: customTracedPixels, width: customTraceWidth, height: customTraceHeight }]
+    : customLayers;
+  const { width, height, placed } = layoutLayers(layers);
   const pixels = [];
   for (const { layer, xOffset, yOffset } of placed) {
     for (const p of layer.pixels) pixels.push({ dx: p.dx + xOffset, dy: p.dy + yOffset, c: p.c });
@@ -1348,7 +1365,12 @@ function updateTextWidthBounds() {
   slider.max = boardW;
   const text = document.getElementById("customTextInput").value.trim();
   if (text && !customTextWidthTouched) {
-    const suggested = Math.min(boardW, Math.max(16, text.length * 6));
+    // Width should track the LONGEST line, not the total character count
+    // across all lines -- multi-line text is stacked vertically, not
+    // concatenated, so summing every line would way overshoot the width
+    // an actual line of that text needs.
+    const longestLine = Math.max(...text.split("\n").map((l) => l.length));
+    const suggested = Math.min(boardW, Math.max(16, longestLine * 6));
     slider.value = suggested;
     document.getElementById("customTextWidthLabel").textContent = suggested;
   }
@@ -1534,6 +1556,14 @@ document.getElementById("customNextBtn").addEventListener("click", () => {
 document.getElementById("customBackBtn").addEventListener("click", () => {
   document.getElementById("customStep2").style.display = "none";
   document.getElementById("customStep1").style.display = "";
+  // finalizeDesignForPositioning() overwrote customTracedPixels with the
+  // flattened combined design for step 2's use -- re-derive step 1's
+  // working trace fresh from the actual inputs (still untouched) rather
+  // than leaving that flattened blob sitting in it, which used to look
+  // like "the current draft" and get re-added as a duplicate layer if
+  // Next was pressed again.
+  if (customMode === "image") retraceCurrentImage(); else retraceCurrentText();
+  renderLayersList();
 });
 
 document.getElementById("customSubmitBtn").addEventListener("click", async () => {
