@@ -1034,6 +1034,39 @@ document.getElementById("helpBtn").addEventListener("click", async () => {
 });
 
 // ---------- load + place ----------
+// Snapshot() does 16,384 individual grid.Get() calls (one per board
+// cell, painted or not) -- cheap while the grid was small, but it
+// started failing outright ("out of gas in location: CPUCycles",
+// confirmed live against the real realm) once occupiedCells grew large
+// enough, and only gets worse from here since the grid only grows.
+// Render()'s own canvas builder uses grid.Iterate() instead, which only
+// visits cells that actually EXIST in the tree (currently ~650, not
+// 16,384) -- reparsing the painted-cell data back out of its embedded
+// SVG stays cheap regardless of how full the board gets, and rebuilds
+// the exact dense-string shape the rest of this file already expects
+// from Snapshot(), so liveColorAt/paintSnapshot/drawCustomPreview don't
+// need to change at all.
+const RENDER_CELL_PX = 8; // must match canvasDataURI()'s own cellPx constant in the contract
+
+function buildSnapshotFromRender(renderRaw, w, h, minX, minY) {
+  const dense = new Array(w * h).fill("0");
+  const md = parseGnoEvalString(renderRaw) || "";
+  const svgMatch = /data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)/.exec(md);
+  if (!svgMatch) return dense.join("");
+  const svg = decodeURIComponent(escape(atob(svgMatch[1])));
+  const rectRe = /<rect x="(-?\d+)" y="(-?\d+)"[^>]*fill="(#[0-9a-fA-F]{6})"/g;
+  let m;
+  while ((m = rectRe.exec(svg))) {
+    const colorIndex = paletteColors.findIndex((c) => c.toLowerCase() === m[3].toLowerCase());
+    if (colorIndex < 0) continue;
+    const cellX = minX + Math.round(Number(m[1]) / RENDER_CELL_PX);
+    const cellY = minY + Math.round(Number(m[2]) / RENDER_CELL_PX);
+    const idx = (cellY - minY) * w + (cellX - minX);
+    if (idx >= 0 && idx < dense.length) dense[idx] = String(colorIndex);
+  }
+  return dense.join("");
+}
+
 async function loadCanvas() {
   if (loadInFlight) return;
   loadInFlight = true;
@@ -1045,15 +1078,15 @@ async function loadCanvas() {
     originX = minX; originY = minY;
     const w = maxX - minX + 1, h = maxY - minY + 1;
 
-    const [snapshotRaw, paletteRaw, totalRaw, occupiedRaw, expansionsRaw] = await Promise.all([
-      abciQuery("vm/qeval", PIXEL_REALM_PATH + ".Snapshot()"),
+    const [renderRaw, paletteRaw, totalRaw, occupiedRaw, expansionsRaw] = await Promise.all([
+      abciQuery("vm/qeval", PIXEL_REALM_PATH + '.Render("")'),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".PaletteCSV()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".TotalPlacements()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".OccupiedCells()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ExpansionsCount()"),
     ]);
-    lastSnapshotStr = parseGnoEvalString(snapshotRaw) || "";
     paletteColors = (parseGnoEvalString(paletteRaw) || "").split(",").filter(Boolean);
+    lastSnapshotStr = buildSnapshotFromRender(renderRaw, w, h, minX, minY);
 
     deployedOnChain = true;
     statusEl.style.display = "none";
