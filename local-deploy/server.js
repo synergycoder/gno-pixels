@@ -23,7 +23,15 @@ const CHAIN_ID = "sapphire-1";
 const PKG_DIR = path.join(__dirname, "..", "contract");
 const PKG_PATH = "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels";
 const OWNER_ADDRESS = "g188mapat33awn7r9uk08l0jc9my0n07fpmspxel";
-const SIMULATE_GAS_CEILING = "50000000";
+// Just a dry-run ceiling for the simulate step (real broadcast gas-wanted
+// is always computed from actual measured usage + GAS_MARGIN, regardless
+// of this value) -- raised well past a single SetOfficialTarget batch's
+// needs. Each batch gets a bit more expensive as officialTarget's avl
+// tree grows (measured: 50 pixels into an empty tree used well under
+// 50M gas, the next 50 into a 50-entry tree needed ~60M) but the chain's
+// actual MaxGas per block is 3,000,000,000 (checked via consensus_params
+// on sapphire-1), so this still leaves a huge margin.
+const SIMULATE_GAS_CEILING = "500000000";
 const GAS_MARGIN = 0.1; // matches the sibling dashboard's proven simulate-then-broadcast margin
 const LOG_PATH = path.join(__dirname, "prepopulate-log.csv");
 const LOG_HEADER = "index,x,y,colorIndex,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
