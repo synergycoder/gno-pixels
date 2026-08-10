@@ -40,6 +40,10 @@ const TARGET_LOG_PATH = path.join(__dirname, "settarget-log.csv");
 const TARGET_LOG_HEADER = "chunkIndex,pixelCount,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
 const MIGRATE_LOG_PATH = path.join(__dirname, "migrate-log.csv");
 const MIGRATE_LOG_HEADER = "index,x,y,colorIndex,placer,originalHeight,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
+const EVOLUTION_SCRIPT_PATH = path.join(__dirname, "generate-evolution-gif.py");
+const EVOLUTION_DIR = path.join(__dirname, "evolution-output");
+const EVOLUTION_GIF_PATH = path.join(EVOLUTION_DIR, "gno_pixels_evolution.gif");
+if (!fs.existsSync(EVOLUTION_DIR)) fs.mkdirSync(EVOLUTION_DIR, { recursive: true });
 
 // gnokey splits its output across streams: the GAS WANTED/USED/TX HASH
 // summary goes to stdout, but the detailed "--= Error =--" panic trace
@@ -529,6 +533,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Read-only -- no wallet needed. The public site never shows design
+  // ids anywhere, but Rename/Remove below need one, so this lists them
+  // right where they're actually used.
+  if (req.method === "GET" && req.url === "/communitydesigns") {
+    try {
+      const raw = await qeval(`${PKG_PATH}.ListCommunityDesigns()`);
+      const csv = parseGnoEvalString(raw) || "";
+      const designs = csv.split(";").filter(Boolean).map((entry) => {
+        const [id, name, count] = entry.split(",");
+        return { id, name, count: Number(count) };
+      });
+      sendJson(res, 200, { designs });
+    } catch (err) {
+      sendJson(res, 500, { error: errText(err) });
+    }
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/forceexpand") {
     try {
       const payload = await readBody(req);
@@ -597,6 +619,41 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       sendJson(res, 500, { error: errText(err) });
     }
+    return;
+  }
+
+  // Regenerates the board evolution GIF -- read-only (indexer + qeval),
+  // no wallet needed, so unlike everything else in this file it's not
+  // gated on keyringHome/keyName/password at all. Runs synchronously
+  // (no batch/poll job like prepopulate below) since a full regenerate
+  // currently takes well under a minute; revisit if that grows a lot.
+  if (req.method === "POST" && req.url === "/evolution/generate") {
+    execFile(
+      "python3",
+      [EVOLUTION_SCRIPT_PATH, EVOLUTION_GIF_PATH],
+      { maxBuffer: 16 * 1024 * 1024, timeout: 5 * 60 * 1000 },
+      (err, stdout, stderr) => {
+        if (err) {
+          sendJson(res, 500, { error: errText(err) || String(err) });
+          return;
+        }
+        let sizeBytes = null;
+        try { sizeBytes = fs.statSync(EVOLUTION_GIF_PATH).size; } catch {}
+        sendJson(res, 200, { log: stdout, sizeBytes, generatedAt: new Date().toISOString() });
+      },
+    );
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/evolution/gif") {
+    if (!fs.existsSync(EVOLUTION_GIF_PATH)) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not generated yet -- click \"Regenerate\" first.");
+      return;
+    }
+    const stat = fs.statSync(EVOLUTION_GIF_PATH);
+    res.writeHead(200, { "Content-Type": "image/gif", "Content-Length": stat.size });
+    fs.createReadStream(EVOLUTION_GIF_PATH).pipe(res);
     return;
   }
 

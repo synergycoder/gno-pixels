@@ -115,8 +115,22 @@
 
 <hr>
 
+<h1>Community designs</h1>
+<p>Read-only, no wallet needed -- the public site never shows design ids anywhere, but Rename and Remove below both need one, so look it up here first.</p>
+<p><button id="listDesignsBtn">Refresh list</button></p>
+<div class="recent-log" id="designsList" style="display:none; max-height:280px"></div>
+
+<hr>
+
+<h1>Board evolution GIF</h1>
+<p>Read-only, no wallet needed. Replays every successful <code>SetPixel</code>/<code>SetPixels</code>/<code>ImportHistoricalPixel</code> call from the sapphire-1 indexer in chronological order and renders one frame per individual pixel write -- the same data source the site itself uses to reconstruct board state, since <code>Snapshot()</code>/<code>Render()</code> now both exceed the query-time gas ceiling on this board. Takes under a minute currently; regenerate anytime to get a fresh one as the board fills in further.</p>
+<p><button id="evolutionGenerateBtn">Regenerate</button> <a href="/evolution/gif" id="evolutionDownloadLink" target="_blank" style="display:none; margin-left:0.75rem">Open current GIF</a></p>
+<div class="status" id="evolutionStatus"></div>
+
+<hr>
+
 <h1>Rename a community design</h1>
-<p>The contract has no rename of its own, so this reads the design's current pixels, delists the old entry (<code>RemoveCommunityDesign</code> -- any pixels already placed toward it stay exactly as painted on the board either way), then resubmits the same pixels under the new name (<code>SubmitCommunityDesign</code>). Two real transactions, two real fees. The design gets a brand new id -- check <code>ListCommunityDesigns()</code> on the site afterward if you need it.</p>
+<p>The contract has no rename of its own, so this reads the design's current pixels, delists the old entry (<code>RemoveCommunityDesign</code> -- any pixels already placed toward it stay exactly as painted on the board either way), then resubmits the same pixels under the new name (<code>SubmitCommunityDesign</code>). Two real transactions, two real fees. The design gets a brand new id -- refresh the list above afterward if you need it.</p>
 
 <div class="field"><label>Design id (e.g. d11)</label><input id="renameDesignId" type="text" placeholder="d11"></div>
 <div class="field"><label>New name</label><input id="renameNewName" type="text" placeholder="e.g. GNOswap"></div>
@@ -145,6 +159,60 @@ fetch("/config").then(r => r.json()).then(cfg => {
   document.getElementById("totalPixels").textContent = cfg.totalTargetPixels;
   document.getElementById("maxPixels").value = cfg.totalTargetPixels;
   document.getElementById("totalOfficialPixels").textContent = cfg.totalOfficialTargetPixels;
+});
+
+async function loadDesignsList() {
+  const el = document.getElementById("designsList");
+  const btn = document.getElementById("listDesignsBtn");
+  btn.disabled = true;
+  btn.textContent = "Loading…";
+  try {
+    const res = await fetch("/communitydesigns");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "failed to load");
+    el.style.display = "block";
+    // ListCommunityDesigns() returns oldest-first (creation order); flip
+    // it so the newest submission is the first thing you see.
+    el.textContent = data.designs.length
+      ? data.designs.slice().reverse().map((d) => `${d.id}  ${d.name}  (${d.count} px)`).join("\n")
+      : "No community designs submitted yet.";
+  } catch (err) {
+    el.style.display = "block";
+    el.textContent = "Failed to load: " + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Refresh list";
+  }
+}
+document.getElementById("listDesignsBtn").addEventListener("click", loadDesignsList);
+loadDesignsList();
+
+function setEvolutionStatus(text, cls) {
+  const el = document.getElementById("evolutionStatus");
+  el.className = "status" + (cls ? " " + cls : "");
+  el.textContent = text;
+}
+
+document.getElementById("evolutionGenerateBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("evolutionGenerateBtn");
+  const link = document.getElementById("evolutionDownloadLink");
+  btn.disabled = true;
+  btn.textContent = "Generating… (can take under a minute)";
+  setEvolutionStatus("");
+  try {
+    const res = await fetch("/evolution/generate", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "generate failed");
+    const mb = (data.sizeBytes / (1024 * 1024)).toFixed(2);
+    setEvolutionStatus(`Generated ${mb} MB at ${new Date(data.generatedAt).toLocaleTimeString()}.`, "success");
+    link.style.display = "";
+    link.href = "/evolution/gif?t=" + Date.now(); // cache-bust so "Open" shows the fresh one
+  } catch (err) {
+    setEvolutionStatus("Generate failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Regenerate";
+  }
 });
 
 function formValues() {
