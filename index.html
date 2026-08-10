@@ -147,6 +147,17 @@
   .mini-help-btn:hover { background: var(--accent-strong); }
   .mini-help-btn:disabled { opacity: 0.5; cursor: default; }
   .mini-card .status { font-size: 0.72rem; margin: 0.4rem 0 0; }
+  .mini-help-row { display: flex; gap: 0.4rem; align-items: stretch; }
+  .mini-help-row .mini-help-btn { flex: 1; min-width: 0; }
+  .mini-count-input {
+    width: 42px; flex: 0 0 auto; padding: 0.3rem; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.78rem; text-align: center;
+  }
+  .mini-card-thumb { cursor: pointer; }
+  .thumb-hover-preview {
+    position: fixed; z-index: 46; image-rendering: pixelated; border: 2px solid var(--accent);
+    border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); pointer-events: none; background: #000;
+  }
 
   .community-toggle-btn {
     width: 100%; padding: 0.55rem 0.75rem; border-radius: 8px; border: 1px dashed var(--border);
@@ -331,12 +342,15 @@
 <aside class="side-column">
   <div class="mini-card" id="officialMiniCard" style="display:none">
     <div class="mini-card-header">
-      <img src="gnome-icon.svg" alt="" class="mini-card-thumb">
+      <canvas id="officialMiniThumb" class="mini-card-thumb"></canvas>
       <span class="mini-card-name">🏁 Official logo</span>
     </div>
     <p class="mini-card-meta" id="helpProgressText">Loading progress…</p>
     <div class="mini-progress-wrap"><div class="mini-progress-fill" id="helpProgressFill" style="width:0%"></div></div>
-    <button class="mini-help-btn" id="helpBtn">Help place pixels</button>
+    <div class="mini-help-row">
+      <input type="number" class="mini-count-input" id="helpPixelCount" min="1" max="10" value="1" title="How many pixels to place (1-10)">
+      <button class="mini-help-btn" id="helpBtn">Help place pixels</button>
+    </div>
     <p class="status" id="helpStatus"></p>
   </div>
 
@@ -373,6 +387,7 @@
 </div>
 
 <div class="placed-by-overlay" id="placedByOverlay" style="display:none"></div>
+<canvas class="thumb-hover-preview" id="thumbHoverPreview" style="display:none"></canvas>
 
 <div class="modal-backdrop" id="customModalBackdrop" style="display:none">
   <div class="modal" id="customModal">
@@ -919,10 +934,36 @@ function liveColorAt(x, y) {
   return Number(lastSnapshotStr[idx]);
 }
 
+// Real live render of the target pattern instead of the generic gnome
+// icon -- matched cells show their real placed color, everything else
+// (not yet placed) stays background/black, so the thumbnail visibly
+// fills in over time exactly like the community-design thumbnails show
+// their own designs, rather than a static logo that never changes.
+function drawOfficialThumbnail() {
+  const canvas = document.getElementById("officialMiniThumb");
+  if (!canvas || !TARGET_PATTERN.length || !paletteColors.length) return;
+  const { minX, minY, width, height } = boundsOf(TARGET_PATTERN);
+  const box = 30;
+  canvas.width = box;
+  canvas.height = box;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, box, box);
+  const scale = Math.min(box / width, box / height);
+  const offX = (box - width * scale) / 2;
+  const offY = (box - height * scale) / 2;
+  for (const [x, y, c] of TARGET_PATTERN) {
+    if (liveColorAt(x, y) !== c) continue; // not placed (or wrong color) yet -- leave as background
+    ctx.fillStyle = paletteColors[c] || "#fff";
+    ctx.fillRect(offX + (x - minX) * scale, offY + (y - minY) * scale, Math.max(1, scale), Math.max(1, scale));
+  }
+}
+
 function updateHelpSection() {
   const pending = TARGET_PATTERN.filter(([x, y, c]) => liveColorAt(x, y) !== c);
   const done = TARGET_PATTERN.length - pending.length;
   document.getElementById("officialMiniCard").style.display = "";
+  drawOfficialThumbnail();
   document.getElementById("helpProgressText").textContent =
     pending.length === 0
       ? `Done! All ${TARGET_PATTERN.length} logo pixels are placed. 🎉`
@@ -937,7 +978,8 @@ let currentPending = [];
 document.getElementById("helpBtn").addEventListener("click", async () => {
   if (currentPending.length === 0) return;
   const statusEl = document.getElementById("helpStatus");
-  const batchSize = feesSupported ? Math.min(customMaxBulk, currentPending.length) : 1;
+  const requested = Math.max(1, Math.min(10, Number(document.getElementById("helpPixelCount").value) || 1));
+  const batchSize = feesSupported ? Math.min(requested, customMaxBulk, currentPending.length) : 1;
   const picked = pickRandomPending(currentPending, batchSize);
   statusEl.textContent = `Picked ${picked.length} pixel(s) for you — scrolling there…`;
   scrollCellIntoView(picked[0][0], picked[0][1]);
@@ -1307,7 +1349,54 @@ function drawMiniThumbnail(canvas, pixels) {
 }
 
 let communityPendingById = {};
+let communityDesignsById = {};
 let communityListExpanded = false;
+
+// Hover-to-zoom for a thumbnail too small to make out clearly -- no
+// click, appears on mouseenter, gone on mouseleave. Reuses boundsOf()
+// (absolute board coords, same fix as drawMiniThumbnail's own).
+function showPixelsHoverPreview(pixels, e) {
+  const preview = document.getElementById("thumbHoverPreview");
+  if (!pixels.length) return;
+  const box = 220;
+  const { minX, minY, width, height } = boundsOf(pixels);
+  const scale = Math.max(1, Math.floor(Math.min(box / width, box / height)));
+  preview.width = width * scale;
+  preview.height = height * scale;
+  const ctx = preview.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, preview.width, preview.height);
+  for (const [x, y, c] of pixels) {
+    ctx.fillStyle = paletteColors[c] || "#fff";
+    ctx.fillRect((x - minX) * scale, (y - minY) * scale, scale, scale);
+  }
+  preview.style.display = "";
+  positionThumbHoverPreview(e);
+}
+function showThumbHoverPreview(id, e) {
+  const d = communityDesignsById[id];
+  if (!d) return;
+  showPixelsHoverPreview(d.pixels, e);
+}
+function positionThumbHoverPreview(e) {
+  const preview = document.getElementById("thumbHoverPreview");
+  const margin = 14;
+  let left = e.clientX + margin;
+  let top = e.clientY + margin;
+  if (left + preview.width > window.innerWidth) left = e.clientX - preview.width - margin;
+  if (top + preview.height > window.innerHeight) top = window.innerHeight - preview.height - margin;
+  preview.style.left = Math.max(0, left) + "px";
+  preview.style.top = Math.max(0, top) + "px";
+}
+function hideThumbHoverPreview() {
+  document.getElementById("thumbHoverPreview").style.display = "none";
+}
+
+document.getElementById("officialMiniThumb").addEventListener("mouseenter", (e) => {
+  showPixelsHoverPreview(TARGET_PATTERN.filter(([x, y, c]) => liveColorAt(x, y) === c), e);
+});
+document.getElementById("officialMiniThumb").addEventListener("mousemove", positionThumbHoverPreview);
+document.getElementById("officialMiniThumb").addEventListener("mouseleave", hideThumbHoverPreview);
 
 function renderCommunityDesigns(designs) {
   const list = document.getElementById("communityDesignsList");
@@ -1325,7 +1414,9 @@ function renderCommunityDesigns(designs) {
 
   list.innerHTML = withProgress.map((d) => {
     communityPendingById[d.id] = d.pending;
+    communityDesignsById[d.id] = d;
     const pct = d.pixels.length ? Math.round((d.done / d.pixels.length) * 100) : 0;
+    const maxPick = Math.max(1, Math.min(10, d.pending.length));
     return `
       <div class="mini-card">
         <div class="mini-card-header">
@@ -1334,7 +1425,12 @@ function renderCommunityDesigns(designs) {
         </div>
         <div class="mini-progress-wrap"><div class="mini-progress-fill" style="width:${pct}%"></div></div>
         <div class="mini-card-meta">${d.done} / ${d.pixels.length} placed</div>
-        <button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}" ${d.pending.length === 0 ? "disabled" : ""}>${d.pending.length === 0 ? "Done! 🎉" : "Help place pixels"}</button>
+        ${d.pending.length === 0
+          ? `<button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}" disabled>Done! 🎉</button>`
+          : `<div class="mini-help-row">
+              <input type="number" class="mini-count-input" data-id="${d.id}" min="1" max="${maxPick}" value="1" title="How many pixels to place (1-${maxPick})">
+              <button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}">Help place pixels</button>
+            </div>`}
       </div>`;
   }).join("");
 
@@ -1342,12 +1438,17 @@ function renderCommunityDesigns(designs) {
     const d = withProgress.find((x) => x.id === canvas.dataset.thumbId);
     if (!d) return;
     drawMiniThumbnail(canvas, d.pixels);
+    canvas.addEventListener("mouseenter", (e) => showThumbHoverPreview(canvas.dataset.thumbId, e));
+    canvas.addEventListener("mousemove", positionThumbHoverPreview);
+    canvas.addEventListener("mouseleave", hideThumbHoverPreview);
   });
   list.querySelectorAll(".community-help-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const pending = communityPendingById[btn.dataset.id] || [];
       if (!pending.length) return;
-      const batchSize = feesSupported ? Math.min(customMaxBulk, pending.length) : 1;
+      const countInput = list.querySelector(`.mini-count-input[data-id="${btn.dataset.id}"]`);
+      const requested = Math.max(1, Math.min(10, Number(countInput && countInput.value) || 1));
+      const batchSize = feesSupported ? Math.min(requested, customMaxBulk, pending.length) : 1;
       const picked = pickRandomPending(pending, batchSize);
       scrollCellIntoView(picked[0][0], picked[0][1]);
       if (picked.length > 1) {
@@ -1442,14 +1543,32 @@ function updateTraceCostEstimate() {
   el.textContent = `Estimated cost: ~${formatGnot(estUgnot)} at this size (less if some pixels happen to match the official design — that's calculated exactly once you position it).`;
 }
 
+// The contract's own SetPixel/SetPixels treat colorIndex 0 (black) as
+// "erase", not "paint black" (recordPlacement calls grid.Remove for it)
+// -- an untouched cell already reads as black too, so a black cell in a
+// design is PERMANENTLY indistinguishable from an empty one. Left in,
+// it silently inflated a design's "done" count the moment it was
+// submitted (matched the empty board immediately, with nobody actually
+// placing anything) -- reported as "I just submitted this and it
+// already shows progress I didn't make". Stripped here, at the one
+// place both image and text tracing funnel through, plus separately in
+// free draw below.
+function excludeUnplaceableBlack(pixels) {
+  const kept = pixels.filter((p) => p.c !== 0);
+  return { pixels: kept, excludedCount: pixels.length - kept.length };
+}
+
 function applyTrace(result) {
-  customTracedPixels = result.pixels;
+  const { pixels, excludedCount } = excludeUnplaceableBlack(result.pixels);
+  customTracedPixels = pixels;
   customTraceWidth = result.width;
   customTraceHeight = result.height;
   drawTracePreview();
-  document.getElementById("customTraceStatus").textContent = `${result.pixels.length} pixels traced (${result.width}×${result.height}).`;
+  document.getElementById("customTraceStatus").textContent =
+    `${pixels.length} pixels traced (${result.width}×${result.height}).` +
+    (excludedCount ? ` (${excludedCount} black pixel(s) skipped — black can't be placed distinctly from empty on this board.)` : "");
   updateTraceCostEstimate();
-  document.getElementById("customAddLayerBtn").disabled = result.pixels.length === 0;
+  document.getElementById("customAddLayerBtn").disabled = pixels.length === 0;
   updateNextButtonState();
 }
 
@@ -1742,18 +1861,25 @@ function resizeDrawGrid(newW, newH) {
 document.addEventListener("mouseup", () => { drawPainting = false; });
 
 function updateDrawTrace() {
-  const pixels = [];
+  const rawPixels = [];
   for (let y = 0; y < customDrawH; y++) {
     for (let x = 0; x < customDrawW; x++) {
       const c = customDrawGridData[y * customDrawW + x];
       if (c === null || c === undefined) continue;
-      pixels.push({ dx: x, dy: y, c });
+      rawPixels.push({ dx: x, dy: y, c });
     }
   }
+  // Black stays visible on the editing grid itself (customDrawGridData
+  // is untouched) so what you painted still looks right while you work
+  // -- only excluded from what actually gets traced/submitted, same
+  // reasoning as excludeUnplaceableBlack() for image/text.
+  const { pixels, excludedCount } = excludeUnplaceableBlack(rawPixels);
   customTracedPixels = pixels;
   customTraceWidth = customDrawW;
   customTraceHeight = customDrawH;
-  document.getElementById("customTraceStatus").textContent = `${pixels.length} pixels drawn (${customDrawW}×${customDrawH}).`;
+  document.getElementById("customTraceStatus").textContent =
+    `${pixels.length} pixels drawn (${customDrawW}×${customDrawH}).` +
+    (excludedCount ? ` (${excludedCount} black pixel(s) won't be placeable — treated as empty on this board.)` : "");
   updateTraceCostEstimate();
   document.getElementById("customAddLayerBtn").disabled = pixels.length === 0;
   updateNextButtonState();
