@@ -114,25 +114,48 @@
   .status { color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0.5rem 0; }
   .status.error { color: #f87171; }
 
-  .help-section {
-    background: rgba(108,92,231,0.1); border: 1px solid rgba(108,92,231,0.35); border-radius: 12px;
-    padding: 0.85rem 1.3rem; margin: 1.5rem 0;
-    display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; text-align: left;
+  /* Left sidebar: the official-design progress card (always visible,
+     not collapsible -- "ours") plus the collapsible, sorted community
+     design list, both sticky so they stay reachable no matter how far
+     down the page/board someone's scrolled. Same convention as the
+     sticky header/footer already used everywhere else on this page. */
+  .layout {
+    display: flex; align-items: flex-start; gap: 1.5rem;
+    max-width: 1700px; width: 100%; margin: 0 auto; padding: 2rem 1.25rem 3rem; box-sizing: border-box;
   }
-  .help-icon { height: 2.5rem; width: auto; flex: 0 0 auto; border-radius: 15%; }
-  .help-main { flex: 1 1 260px; min-width: 0; }
-  .help-section h2 { font-size: 0.98rem; margin: 0 0 0.3rem; }
-  .help-section p { color: var(--text-muted); font-size: 0.82rem; margin: 0 0 0.5rem; }
-  .help-progress-wrap { height: 7px; border-radius: 4px; background: var(--border-soft); overflow: hidden; margin: 0; }
-  .help-progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
-  .help-action { flex: 0 0 auto; text-align: center; }
-  .help-action .status { margin: 0.4rem 0 0; }
-  .help-btn {
-    padding: 0.7rem 1.4rem; border-radius: 8px; border: none; background: var(--accent);
-    color: #fff; cursor: pointer; font-family: inherit; font-size: 0.95rem; font-weight: 700; white-space: nowrap;
+  .side-column { flex: 0 0 250px; width: 250px; position: sticky; top: 5rem; display: flex; flex-direction: column; gap: 0.75rem; }
+  .main-column { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 900px) { .side-column { display: none; } }
+
+  .mini-card {
+    background: rgba(108,92,231,0.1); border: 1px solid rgba(108,92,231,0.35); border-radius: 10px;
+    padding: 0.7rem 0.8rem; font-size: 0.8rem; text-align: left;
   }
-  .help-btn:hover { background: var(--accent-strong); }
-  .help-btn:disabled { opacity: 0.5; cursor: default; }
+  .mini-card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+  .mini-card-thumb {
+    width: 30px; height: 30px; border-radius: 6px; flex: 0 0 auto;
+    image-rendering: pixelated; background: #000; object-fit: contain;
+  }
+  .mini-card-name { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-card-meta { color: var(--text-muted); font-size: 0.72rem; margin: 0.3rem 0 0.5rem; }
+  .mini-progress-wrap { height: 6px; border-radius: 3px; background: var(--border-soft); overflow: hidden; margin: 0 0 0.5rem; }
+  .mini-progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+  .mini-help-btn {
+    width: 100%; padding: 0.45rem 0.6rem; border-radius: 6px; border: none; background: var(--accent);
+    color: #fff; cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: 700;
+  }
+  .mini-help-btn:hover { background: var(--accent-strong); }
+  .mini-help-btn:disabled { opacity: 0.5; cursor: default; }
+  .mini-card .status { font-size: 0.72rem; margin: 0.4rem 0 0; }
+
+  .community-toggle-btn {
+    width: 100%; padding: 0.55rem 0.75rem; border-radius: 8px; border: 1px dashed var(--border);
+    background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.82rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  }
+  .community-toggle-btn:hover { background: var(--border-soft); border-color: var(--accent); }
+  .community-toggle-count { color: var(--text-muted); font-weight: 400; }
+  .community-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 60vh; overflow-y: auto; }
 
   .board-toolbar { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
   /* A right-click's result used to only ever update coord-readout, right
@@ -221,6 +244,19 @@
     image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px;
     max-width: 100%; display: block; margin: 1rem 0; cursor: crosshair; background: #000;
   }
+  .draw-grid-wrap {
+    border: 1px solid var(--border); border-radius: 8px; overflow: auto; max-height: 320px;
+    margin: 0.75rem 0; background: #000; user-select: none;
+  }
+  .draw-grid { display: grid; width: max-content; }
+  .draw-grid .draw-cell { width: 14px; height: 14px; border: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
+  .draw-grid .draw-cell:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .eraser-swatch {
+    background-image:
+      linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%);
+    background-size: 10px 10px; background-position: 0 0, 0 5px, 5px -5px, -5px 0px; background-color: #333;
+  }
   .modal .primary-btn {
     padding: 0.65rem 1.3rem; border-radius: 8px; border: none; background: var(--accent);
     color: #fff; cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 700;
@@ -253,14 +289,6 @@
   #customTextInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; resize: vertical; }
   #customDesignName { width: 100%; padding: 0.5rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.9rem; }
 
-  .community-design-card {
-    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
-    padding: 0.9rem 1.1rem; margin: 0 0 0.9rem;
-  }
-  .community-design-card:last-child { margin-bottom: 0; }
-  .community-design-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.4rem; }
-  .community-design-meta { font-size: 0.78rem; color: var(--text-muted); margin: 0.3rem 0 0.6rem; }
-  .community-design-card .help-btn { width: 100%; padding: 0.5rem 1rem; font-size: 0.85rem; }
 </style>
 </head>
 <body>
@@ -291,27 +319,30 @@
   <p class="status" id="topStatus">Loading…</p>
 </header>
 
-<div class="page">
+<div class="layout">
 
-<p class="tagline">A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
-
-<div class="help-section" id="helpSection" style="display:none">
-  <img src="gnome-icon.svg" alt="" class="help-icon">
-  <div class="help-main">
-    <h2>🏁 Help us finish the gno.land logo</h2>
-    <p id="helpProgressText">Loading progress…</p>
-    <div class="help-progress-wrap"><div class="help-progress-fill" id="helpProgressFill" style="width:0%"></div></div>
-  </div>
-  <div class="help-action">
-    <button class="help-btn" id="helpBtn">Place the next pixel for me</button>
+<aside class="side-column">
+  <div class="mini-card" id="officialMiniCard" style="display:none">
+    <div class="mini-card-header">
+      <img src="gnome-icon.svg" alt="" class="mini-card-thumb">
+      <span class="mini-card-name">🏁 Official logo</span>
+    </div>
+    <p class="mini-card-meta" id="helpProgressText">Loading progress…</p>
+    <div class="mini-progress-wrap"><div class="mini-progress-fill" id="helpProgressFill" style="width:0%"></div></div>
+    <button class="mini-help-btn" id="helpBtn">Place the next pixel for me</button>
     <p class="status" id="helpStatus"></p>
   </div>
-</div>
 
-<div id="communityDesignsSection" style="display:none">
-  <h2 style="font-size:1rem; margin: 1.5rem 0 0.75rem; text-align:center;">🎨 Community-submitted designs</h2>
-  <div id="communityDesignsList"></div>
-</div>
+  <button type="button" class="community-toggle-btn" id="communityToggleBtn" style="display:none">
+    <span id="communityToggleLabel">Show community art</span>
+    <span class="community-toggle-count" id="communityToggleCount"></span>
+  </button>
+  <div class="community-list" id="communityDesignsList" style="display:none"></div>
+</aside>
+
+<div class="main-column">
+
+<p class="tagline">A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
 
 <div id="app" style="display:none">
   <div class="board-toolbar">
@@ -332,6 +363,8 @@
 
 </div>
 
+</div>
+
 <div class="placed-by-overlay" id="placedByOverlay" style="display:none"></div>
 
 <div class="modal-backdrop" id="customModalBackdrop" style="display:none">
@@ -344,6 +377,7 @@
       <div class="tab-row">
         <button type="button" class="tab-btn active" id="customTabImage">Upload an image</button>
         <button type="button" class="tab-btn" id="customTabText">Type text</button>
+        <button type="button" class="tab-btn" id="customTabDraw">Free draw</button>
       </div>
 
       <div id="customImagePane">
@@ -366,6 +400,24 @@
           <label>Color</label>
           <div class="palette-row" id="customTextColorRow" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
         </div>
+      </div>
+
+      <div id="customDrawPane" style="display:none">
+        <p class="modal-hint">Click (or click-and-drag) to paint cells with the selected color. Pick 🧹 to erase a cell.</p>
+        <div class="field-row">
+          <label for="customDrawWidthSlider">Width: <span id="customDrawWidthLabel">20</span> cells</label>
+          <input type="range" id="customDrawWidthSlider" min="4" max="48" value="20">
+        </div>
+        <div class="field-row">
+          <label for="customDrawHeightSlider">Height: <span id="customDrawHeightLabel">20</span> cells</label>
+          <input type="range" id="customDrawHeightSlider" min="4" max="48" value="20">
+        </div>
+        <div class="field-row">
+          <label>Color</label>
+          <div class="palette-row" id="customDrawColorRow" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
+        </div>
+        <div class="draw-grid-wrap"><div class="draw-grid" id="customDrawGrid"></div></div>
+        <button type="button" class="secondary-btn" id="customDrawClearBtn">Clear all</button>
       </div>
 
       <canvas id="customTraceCanvas" class="trace-canvas" style="display:none"></canvas>
@@ -826,7 +878,7 @@ function liveColorAt(x, y) {
 function updateHelpSection() {
   const pending = TARGET_PATTERN.filter(([x, y, c]) => liveColorAt(x, y) !== c);
   const done = TARGET_PATTERN.length - pending.length;
-  document.getElementById("helpSection").style.display = "";
+  document.getElementById("officialMiniCard").style.display = "";
   document.getElementById("helpProgressText").textContent =
     pending.length === 0
       ? `Done! All ${TARGET_PATTERN.length} logo pixels are placed. 🎉`
@@ -879,6 +931,7 @@ async function loadCanvas() {
     }
     buildPalette();
     buildCustomTextPalette();
+    buildCustomDrawPalette();
     paintSnapshot(lastSnapshotStr);
     currentPending = updateHelpSection();
 
@@ -1084,11 +1137,13 @@ async function loadCustomCanvasConfig() {
 // ---------- community designs (submitted via the modal above) ----------
 async function loadCommunityDesigns() {
   const section = document.getElementById("communityDesignsSection");
-  if (!feesSupported) { section.style.display = "none"; return; }
+  const toggleBtn = document.getElementById("communityToggleBtn");
+  const list = document.getElementById("communityDesignsList");
+  if (!feesSupported) { toggleBtn.style.display = "none"; list.style.display = "none"; return; }
   try {
     const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ListCommunityDesigns()");
     const csv = parseGnoEvalString(raw) || "";
-    if (!csv) { section.style.display = "none"; return; }
+    if (!csv) { toggleBtn.style.display = "none"; list.style.display = "none"; return; }
     const rows = csv.split(";").map((entry) => {
       const [id, name, count] = entry.split(",");
       return { id, name, count: Number(count) };
@@ -1099,10 +1154,12 @@ async function loadCommunityDesigns() {
       const pixels = encoded ? encoded.split(";").map((e) => e.split(",").map(Number)) : [];
       return { ...r, pixels };
     }));
-    section.style.display = "";
+    toggleBtn.style.display = "";
+    document.getElementById("communityToggleCount").textContent = `(${designs.length})`;
     renderCommunityDesigns(designs);
   } catch {
-    section.style.display = "none";
+    toggleBtn.style.display = "none";
+    list.style.display = "none";
   }
 }
 
@@ -1110,23 +1167,70 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Small fixed-box thumbnail per design, letterboxed on black (same
+// convention as the other trace/preview canvases) so a very wide or
+// very tall design doesn't distort -- just scaled to fit within the box.
+function drawMiniThumbnail(canvas, pixels, width, height) {
+  const box = 30;
+  canvas.width = box;
+  canvas.height = box;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, box, box);
+  if (!width || !height) return;
+  const scale = Math.min(box / width, box / height);
+  const offX = (box - width * scale) / 2;
+  const offY = (box - height * scale) / 2;
+  for (const [x, y, c] of pixels) {
+    ctx.fillStyle = paletteColors[c] || "#fff";
+    ctx.fillRect(offX + x * scale, offY + y * scale, Math.max(1, scale), Math.max(1, scale));
+  }
+}
+
+function boundsOf(pixels) {
+  let maxX = 0, maxY = 0;
+  for (const [x, y] of pixels) { if (x + 1 > maxX) maxX = x + 1; if (y + 1 > maxY) maxY = y + 1; }
+  return { width: maxX, height: maxY };
+}
+
 let communityPendingById = {};
+let communityListExpanded = false;
 
 function renderCommunityDesigns(designs) {
   const list = document.getElementById("communityDesignsList");
-  list.innerHTML = designs.map((d) => {
+  const withProgress = designs.map((d) => {
     const pending = d.pixels.filter(([x, y, c]) => liveColorAt(x, y) !== c);
-    const done = d.pixels.length - pending.length;
-    communityPendingById[d.id] = pending;
-    const pct = d.pixels.length ? Math.round((done / d.pixels.length) * 100) : 0;
+    return { ...d, pending, done: d.pixels.length - pending.length };
+  });
+  // Unfinished first, finished last -- among unfinished, least-done first
+  // so the designs that most need help surface at the top.
+  withProgress.sort((a, b) => {
+    const aDone = a.pending.length === 0, bDone = b.pending.length === 0;
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    return a.done / (a.pixels.length || 1) - b.done / (b.pixels.length || 1);
+  });
+
+  list.innerHTML = withProgress.map((d) => {
+    communityPendingById[d.id] = d.pending;
+    const pct = d.pixels.length ? Math.round((d.done / d.pixels.length) * 100) : 0;
     return `
-      <div class="community-design-card">
-        <div class="community-design-name">${escapeHtml(d.name || "(untitled)")}</div>
-        <div class="help-progress-wrap"><div class="help-progress-fill" style="width:${pct}%"></div></div>
-        <div class="community-design-meta">${done} / ${d.pixels.length} placed</div>
-        <button type="button" class="help-btn community-help-btn" data-id="${d.id}" ${pending.length === 0 ? "disabled" : ""}>${pending.length === 0 ? "Done! 🎉" : "Help place a pixel"}</button>
+      <div class="mini-card">
+        <div class="mini-card-header">
+          <canvas class="mini-card-thumb" data-thumb-id="${d.id}"></canvas>
+          <span class="mini-card-name" title="${escapeHtml(d.name || "(untitled)")}">${escapeHtml(d.name || "(untitled)")}</span>
+        </div>
+        <div class="mini-progress-wrap"><div class="mini-progress-fill" style="width:${pct}%"></div></div>
+        <div class="mini-card-meta">${d.done} / ${d.pixels.length} placed</div>
+        <button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}" ${d.pending.length === 0 ? "disabled" : ""}>${d.pending.length === 0 ? "Done! 🎉" : "Help place a pixel"}</button>
       </div>`;
   }).join("");
+
+  list.querySelectorAll("canvas[data-thumb-id]").forEach((canvas) => {
+    const d = withProgress.find((x) => x.id === canvas.dataset.thumbId);
+    if (!d) return;
+    const { width, height } = boundsOf(d.pixels);
+    drawMiniThumbnail(canvas, d.pixels, width, height);
+  });
   list.querySelectorAll(".community-help-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const pending = communityPendingById[btn.dataset.id] || [];
@@ -1137,6 +1241,13 @@ function renderCommunityDesigns(designs) {
     });
   });
 }
+
+function setCommunityListExpanded(expanded) {
+  communityListExpanded = expanded;
+  document.getElementById("communityDesignsList").style.display = expanded ? "" : "none";
+  document.getElementById("communityToggleLabel").textContent = expanded ? "Hide community art" : "Show community art";
+}
+document.getElementById("communityToggleBtn").addEventListener("click", () => setCommunityListExpanded(!communityListExpanded));
 
 function hexToRgb(hex) {
   const v = parseInt(hex.slice(1), 16);
@@ -1267,6 +1378,7 @@ function resetWorkingTrace() {
   document.getElementById("customFileInput").value = "";
   document.getElementById("customTextInput").value = "";
   customLoadedImage = null;
+  if (customMode === "draw") buildDrawGrid();
   drawTracePreview();
   document.getElementById("customTraceStatus").textContent = "";
   document.getElementById("customTraceCostEstimate").textContent = "";
@@ -1415,21 +1527,116 @@ function retraceCurrentText() {
   applyTrace(traceTextToPixels(text, width, customTextColor));
 }
 
+// ---------- free draw (manual pixel-by-pixel design) ----------
+//
+// customDrawColor is null for the eraser, otherwise a palette index --
+// distinct from "0 = black", since index 0 is a real paintable color
+// here (unlike the live board, where SetPixel's colorIndex 0 means
+// erase). customDrawGridData holds null for "not part of the design"
+// (skipped when building the pixel list, same as a transparent pixel
+// in an uploaded image) vs an actual color index for a painted cell.
+let customDrawColor = 1;
+let customDrawGridData = [];
+let customDrawW = 20, customDrawH = 20;
+let drawPainting = false;
+
+function buildCustomDrawPalette() {
+  const el = document.getElementById("customDrawColorRow");
+  if (!el || !paletteColors.length) return;
+  el.innerHTML = "";
+  paletteColors.forEach((hex, i) => {
+    const sw = document.createElement("div");
+    sw.className = "swatch" + (customDrawColor === i ? " selected" : "");
+    sw.style.background = hex;
+    sw.title = hex;
+    sw.addEventListener("click", () => { customDrawColor = i; buildCustomDrawPalette(); });
+    el.appendChild(sw);
+  });
+  const eraser = document.createElement("div");
+  eraser.className = "swatch eraser-swatch" + (customDrawColor === null ? " selected" : "");
+  eraser.title = "Eraser";
+  eraser.addEventListener("click", () => { customDrawColor = null; buildCustomDrawPalette(); });
+  el.appendChild(eraser);
+}
+
+function paintDrawCell(i, cell) {
+  customDrawGridData[i] = customDrawColor;
+  cell.style.backgroundColor = customDrawColor === null ? "" : paletteColors[customDrawColor];
+  updateDrawTrace();
+}
+
+function buildDrawGrid() {
+  const el = document.getElementById("customDrawGrid");
+  el.innerHTML = "";
+  el.style.gridTemplateColumns = `repeat(${customDrawW}, 14px)`;
+  customDrawGridData = new Array(customDrawW * customDrawH).fill(null);
+  for (let i = 0; i < customDrawGridData.length; i++) {
+    const cell = document.createElement("div");
+    cell.className = "draw-cell";
+    cell.addEventListener("mousedown", (e) => { e.preventDefault(); drawPainting = true; paintDrawCell(i, cell); });
+    cell.addEventListener("mouseenter", () => { if (drawPainting) paintDrawCell(i, cell); });
+    el.appendChild(cell);
+  }
+}
+document.addEventListener("mouseup", () => { drawPainting = false; });
+
+function updateDrawTrace() {
+  const pixels = [];
+  for (let y = 0; y < customDrawH; y++) {
+    for (let x = 0; x < customDrawW; x++) {
+      const c = customDrawGridData[y * customDrawW + x];
+      if (c === null || c === undefined) continue;
+      pixels.push({ dx: x, dy: y, c });
+    }
+  }
+  customTracedPixels = pixels;
+  customTraceWidth = customDrawW;
+  customTraceHeight = customDrawH;
+  document.getElementById("customTraceStatus").textContent = `${pixels.length} pixels drawn (${customDrawW}×${customDrawH}).`;
+  updateTraceCostEstimate();
+  document.getElementById("customAddLayerBtn").disabled = pixels.length === 0;
+  updateNextButtonState();
+}
+
+document.getElementById("customDrawWidthSlider").addEventListener("input", (e) => {
+  customDrawW = Number(e.target.value);
+  document.getElementById("customDrawWidthLabel").textContent = customDrawW;
+  buildDrawGrid();
+  updateDrawTrace();
+});
+document.getElementById("customDrawHeightSlider").addEventListener("input", (e) => {
+  customDrawH = Number(e.target.value);
+  document.getElementById("customDrawHeightLabel").textContent = customDrawH;
+  buildDrawGrid();
+  updateDrawTrace();
+});
+document.getElementById("customDrawClearBtn").addEventListener("click", () => {
+  buildDrawGrid();
+  updateDrawTrace();
+});
+
 function setCustomMode(mode) {
   customMode = mode;
   document.getElementById("customTabImage").classList.toggle("active", mode === "image");
   document.getElementById("customTabText").classList.toggle("active", mode === "text");
+  document.getElementById("customTabDraw").classList.toggle("active", mode === "draw");
   document.getElementById("customImagePane").style.display = mode === "image" ? "" : "none";
   document.getElementById("customTextPane").style.display = mode === "text" ? "" : "none";
+  document.getElementById("customDrawPane").style.display = mode === "draw" ? "" : "none";
   if (mode === "image") {
     retraceCurrentImage();
-  } else {
+  } else if (mode === "text") {
     buildCustomTextPalette();
     retraceCurrentText();
+  } else {
+    buildCustomDrawPalette();
+    buildDrawGrid();
+    updateDrawTrace();
   }
 }
 document.getElementById("customTabImage").addEventListener("click", () => setCustomMode("image"));
 document.getElementById("customTabText").addEventListener("click", () => setCustomMode("text"));
+document.getElementById("customTabDraw").addEventListener("click", () => setCustomMode("draw"));
 
 document.getElementById("customFileInput").addEventListener("change", (e) => {
   const file = e.target.files[0];
