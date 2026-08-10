@@ -414,34 +414,12 @@
 
     <div id="customStep1">
       <div class="tab-row">
-        <button type="button" class="tab-btn active" id="customTabImage">Upload an image</button>
+        <button type="button" class="tab-btn active" id="customTabDraw">Free draw</button>
         <button type="button" class="tab-btn" id="customTabText">Type text</button>
-        <button type="button" class="tab-btn" id="customTabDraw">Free draw</button>
+        <button type="button" class="tab-btn" id="customTabImage">Upload an image</button>
       </div>
 
-      <div id="customImagePane">
-        <p class="modal-hint">Upload an image — it's traced into pixel art using the board's own 9-color palette, right here in your browser (nothing is uploaded anywhere).</p>
-        <input type="file" id="customFileInput" accept="image/*">
-        <div class="field-row">
-          <label for="customWidthSlider">Width: <span id="customWidthLabel">24</span> cells (height follows the image's aspect ratio)</label>
-          <input type="range" id="customWidthSlider" min="4" max="48" value="24">
-        </div>
-      </div>
-
-      <div id="customTextPane" style="display:none">
-        <p class="modal-hint">Type whatever you want to spell out — rendered with a real font, then traced into pixel art the same way an uploaded image is, so you can size it as compact as you like. Press Enter for multiple lines.</p>
-        <textarea id="customTextInput" maxlength="100" rows="2" placeholder="e.g. HELLO WORLD"></textarea>
-        <div class="field-row">
-          <label for="customTextWidthSlider">Width: <span id="customTextWidthLabel">24</span> cells (height follows automatically)</label>
-          <input type="range" id="customTextWidthSlider" min="4" max="48" value="24">
-        </div>
-        <div class="field-row">
-          <label>Color</label>
-          <div class="palette-row" id="customTextColorRow" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
-        </div>
-      </div>
-
-      <div id="customDrawPane" style="display:none">
+      <div id="customDrawPane">
         <p class="modal-hint">Click (or click-and-drag) to paint cells with the selected color. Pick 🧹 to erase a cell.</p>
         <div class="field-row">
           <label for="customDrawWidthSlider">Width: <span id="customDrawWidthLabel">20</span> cells</label>
@@ -457,6 +435,29 @@
         </div>
         <div class="draw-grid-wrap"><div class="draw-grid" id="customDrawGrid"></div></div>
         <button type="button" class="secondary-btn" id="customDrawClearBtn">Clear all</button>
+      </div>
+
+      <div id="customTextPane" style="display:none">
+        <p class="modal-hint">Type whatever you want to spell out — rendered with a real font, then traced into pixel art the same way an uploaded image is, so you can size it as compact as you like. Press Enter for multiple lines.</p>
+        <textarea id="customTextInput" maxlength="100" rows="2" placeholder="e.g. HELLO WORLD"></textarea>
+        <div class="field-row">
+          <label for="customTextWidthSlider">Width: <span id="customTextWidthLabel">24</span> cells (height follows automatically)</label>
+          <input type="range" id="customTextWidthSlider" min="4" max="48" value="24">
+        </div>
+        <div class="field-row">
+          <label>Color</label>
+          <div class="palette-row" id="customTextColorRow" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
+        </div>
+      </div>
+
+      <div id="customImagePane" style="display:none">
+        <p class="modal-hint">Upload an image — it's traced into pixel art using the board's own 9-color palette, right here in your browser (nothing is uploaded anywhere).</p>
+        <p class="modal-hint">💡 Best results come from simple, low-detail images — logos, icons, flat-color illustrations. Photos and detailed art (gradients, shading, busy backgrounds) tend to look messy once squeezed down to a handful of cells and only 9 colors.</p>
+        <input type="file" id="customFileInput" accept="image/*">
+        <div class="field-row">
+          <label for="customWidthSlider">Width: <span id="customWidthLabel">24</span> cells (height follows the image's aspect ratio)</label>
+          <input type="range" id="customWidthSlider" min="4" max="48" value="24">
+        </div>
       </div>
 
       <canvas id="customTraceCanvas" class="trace-canvas" style="display:none"></canvas>
@@ -1591,7 +1592,7 @@ function drawTracePreview() {
 }
 
 let customLoadedImage = null;
-let customMode = "image"; // "image" | "text"
+let customMode = "draw"; // "draw" | "text" | "image"
 
 // Worst-case estimate, shown before the design is positioned on the
 // board -- at this step we don't know yet which (if any) traced pixels
@@ -1754,7 +1755,21 @@ function finalizeDesignForPositioning() {
 }
 
 function retraceCurrentImage() {
-  if (!customLoadedImage) return;
+  if (!customLoadedImage) {
+    // Clears whatever status text another tab left behind (e.g.
+    // "N pixels drawn" from Free draw) when switching here with no
+    // file chosen yet -- same "nothing to show" reset the empty-text
+    // branch of retraceCurrentText() already does.
+    customTracedPixels = [];
+    customTraceWidth = 0;
+    customTraceHeight = 0;
+    drawTracePreview();
+    document.getElementById("customTraceStatus").textContent = "";
+    document.getElementById("customTraceCostEstimate").textContent = "";
+    document.getElementById("customAddLayerBtn").disabled = true;
+    updateNextButtonState();
+    return;
+  }
   const width = Number(document.getElementById("customWidthSlider").value);
   applyTrace(traceImageToPixels(customLoadedImage, width));
 }
@@ -2167,11 +2182,13 @@ document.getElementById("customSubmitBtn").addEventListener("click", async () =>
 function openCustomModal() {
   customLayers = [];
   customTextWidthTouched = false;
+  customMode = "draw"; // free draw is the default entry point every time the modal opens fresh
   resetWorkingTrace();
   renderLayersList();
   document.getElementById("customModalBackdrop").style.display = "";
   document.getElementById("customStep1").style.display = "";
   document.getElementById("customStep2").style.display = "none";
+  setCustomMode("draw");
 }
 function closeCustomModal() {
   document.getElementById("customModalBackdrop").style.display = "none";
