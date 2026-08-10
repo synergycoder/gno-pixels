@@ -1405,6 +1405,11 @@ let feesSupported = false; // true once loadCustomCanvasConfig() confirms the de
 let customTracedPixels = []; // [{dx, dy, c}], relative to the traced image's own top-left
 let customTraceWidth = 0, customTraceHeight = 0;
 let customOrigin = { x: 0, y: 0 };
+// Starts unpositioned each time step 2 opens -- auto-centering used to
+// mean people could submit a design they never actually chose a spot
+// for, right on top of whatever happened to already be at the center.
+// No overlay renders and Submit stays disabled until an explicit click.
+let customPositioned = false;
 // Renders text with a real system font at high resolution, then
 // downsamples it to exactly targetWidth board cells -- the same
 // "render big, then trace down to whatever width you choose" approach
@@ -2331,6 +2336,7 @@ function drawCustomPreview() {
       ctx.fillRect(x * scale, y * scale, scale, scale);
     }
   }
+  if (!customPositioned) return; // nothing chosen yet -- just the plain board, no overlay
   ctx.globalAlpha = 0.85;
   for (const p of customTracedPixels) {
     const bx = customOrigin.x + p.dx - originX;
@@ -2366,6 +2372,12 @@ function isRedundantBlackPlacement(x, y, c) {
 }
 
 function updateCustomCost() {
+  if (!customPositioned) {
+    document.getElementById("customCostSummary").innerHTML = "Click on the preview above to position your design — cost is estimated once you do.";
+    document.getElementById("customOverlapWarning").style.display = "none";
+    document.getElementById("customSubmitBtn").disabled = true;
+    return;
+  }
   let free = 0, normal = 0, vandal = 0, outOfBounds = 0, redundant = 0;
   for (const p of customTracedPixels) {
     const x = customOrigin.x + p.dx, y = customOrigin.y + p.dy;
@@ -2413,6 +2425,7 @@ document.getElementById("customPreviewCanvas").addEventListener("click", (e) => 
   const cy = Math.floor((e.clientY - rect.top) / cellPxOnScreen);
   customOrigin.x = originX + cx - Math.floor(customTraceWidth / 2);
   customOrigin.y = originY + cy - Math.floor(customTraceHeight / 2);
+  customPositioned = true;
   drawCustomPreview();
   updateCustomCost();
 });
@@ -2420,8 +2433,7 @@ document.getElementById("customPreviewCanvas").addEventListener("click", (e) => 
 document.getElementById("customNextBtn").addEventListener("click", () => {
   finalizeDesignForPositioning();
   if (!customTracedPixels.length) return;
-  customOrigin.x = originX + Math.floor(gridWidth / 2) - Math.floor(customTraceWidth / 2);
-  customOrigin.y = originY + Math.floor(gridHeight / 2) - Math.floor(customTraceHeight / 2);
+  customPositioned = false;
   document.getElementById("customStep1").style.display = "none";
   document.getElementById("customStep2").style.display = "";
   drawCustomPreview();
@@ -2444,6 +2456,10 @@ document.getElementById("customBackBtn").addEventListener("click", () => {
 document.getElementById("customSubmitBtn").addEventListener("click", async () => {
   const statusEl = document.getElementById("customSubmitStatus");
   const btn = document.getElementById("customSubmitBtn");
+  if (!customPositioned) {
+    statusEl.textContent = "Click on the preview above to position your design first.";
+    return;
+  }
   const nameInput = document.getElementById("customDesignName");
   const name = nameInput.value.trim();
   if (!name) {
