@@ -45,18 +45,18 @@
 </head>
 <body>
 
-<h1>Deploy GNO Pixels (sandbox)</h1>
-<p>One-time setup page — deploys the <code>pixelsandbox</code> practice realm directly through your own Adena wallet. Not linked from the main site; nothing here runs until you click Deploy and approve it yourself in Adena.</p>
+<h1>Deploy GNO Pixels</h1>
+<p>One-time setup page — deploys the real, permanent <code>pixels</code> realm directly through your own Adena wallet. Not linked from the main site; nothing here runs until you click Deploy and approve it yourself in Adena.</p>
 
 <div class="note">
-  The deployed package will live at <code>gno.land/r/&lt;your connected address&gt;/pixelsandbox</code> — it only becomes the intended realm if the connected address is really <code>g188mapat33awn7r9uk08l0jc9my0n07fpmspxel</code>. Check the connected address below before deploying.
+  The deployed package will live at <code>gno.land/r/&lt;your connected address&gt;/pixels</code> — it only becomes the intended realm if the connected address is really <code>g188mapat33awn7r9uk08l0jc9my0n07fpmspxel</code>. Check the connected address below before deploying.
 </div>
 
 <div class="field"><b>Chain</b>sapphire-1</div>
 <div class="field"><b>Package path</b><code id="pkgPathDisplay">(connect wallet to see)</code></div>
 
 <p><button id="connectBtn">Connect Adena</button></p>
-<p><button id="deployBtn" disabled>Deploy pixelsandbox</button> <button class="secondary" id="backBtn" onclick="location.href='index.html'">Back to canvas</button></p>
+<p><button id="deployBtn" disabled>Deploy pixels</button> <button class="secondary" id="backBtn" onclick="location.href='index.html'">Back to canvas</button></p>
 
 <div class="status" id="status"></div>
 
@@ -67,7 +67,7 @@ const ADENA_APP_NAME = "GNO Pixels (deploy)";
 let connectedAddress = null;
 
 function pkgPath(address) {
-  return `gno.land/r/${address}/pixelsandbox`;
+  return `gno.land/r/${address}/pixels`;
 }
 
 async function ensureAdenaConnected() {
@@ -123,7 +123,7 @@ document.getElementById("deployBtn").addEventListener("click", async () => {
         value: {
           creator: connectedAddress,
           package: {
-            name: "pixelsandbox",
+            name: "pixels",
             path: pkgPath(connectedAddress),
             files: CONTRACT_FILES,
           },
@@ -148,7 +148,7 @@ document.getElementById("deployBtn").addEventListener("click", async () => {
     statusEl.textContent = "Deploy failed: " + err.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Deploy pixelsandbox";
+    btn.textContent = "Deploy pixels";
   }
 });
 </script>

@@ -1,4 +1,4 @@
-// Local-only deploy + prepopulate console for the real `pixelsandbox`
+// Local-only deploy + prepopulate console for the real `pixels`
 // realm on sapphire-1.
 //
 // Deliberately NOT the same shape as gno-wallet-dashboard/server.js's
@@ -20,7 +20,7 @@ const PORT = 4756;
 const RPC_URL = "https://rpc.sapphire.testnets.gno.land";
 const CHAIN_ID = "sapphire-1";
 const PKG_DIR = path.join(__dirname, "..", "contract");
-const PKG_PATH = "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixelsandbox";
+const PKG_PATH = "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels";
 const OWNER_ADDRESS = "g188mapat33awn7r9uk08l0jc9my0n07fpmspxel";
 const SIMULATE_GAS_CEILING = "50000000";
 const GAS_MARGIN = 0.1; // matches the sibling dashboard's proven simulate-then-broadcast margin

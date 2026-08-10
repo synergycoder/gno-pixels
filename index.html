@@ -238,7 +238,7 @@
     <div class="site-header-spacer"></div>
     <div class="site-header-center">
       <h1 id="titleHome" title="Back to center"><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
-      <a class="realm-link" href="https://sapphire.testnets.gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixelsandbox" target="_blank" rel="noopener">View realm ↗</a>
+      <a class="realm-link" href="https://sapphire.testnets.gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels" target="_blank" rel="noopener">View realm ↗</a>
     </div>
     <div class="wallet-col">
       <div class="wallet-bar">
@@ -375,7 +375,7 @@ const NET = {
 // so early iteration (redeploying while the design is still changing)
 // never collides with whatever the real, permanent realm ends up being
 // called.
-const PIXEL_REALM_PATH = "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixelsandbox";
+const PIXEL_REALM_PATH = "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels";
 const ADENA_APP_NAME = "GNO Pixels";
 
 // ---------- low-level chain access (same approach as gno-observer's own abciQuery) ----------
@@ -875,11 +875,9 @@ async function placePixel(x, y, colorIndex, statusElOverride) {
 // ---------- leaderboard ----------
 //
 // TopPlacers() only exists on realms deployed after this feature was
-// added -- the currently-live pixelsandbox predates it, so this fails
-// with a plain "unknown function" chain error on that realm. Treated
-// as an expected, quiet state (not logged as a real error) rather than
-// blocking the rest of the page, since the leaderboard is a bonus
-// panel, not core functionality.
+// added -- kept defensive here (quiet fallback, not a logged error)
+// in case a future redeploy ever lands on a realm predating it again,
+// since the leaderboard is a bonus panel, not core functionality.
 async function loadLeaderboard() {
   const el = document.getElementById("leaderboard");
   try {
@@ -908,10 +906,10 @@ async function loadLeaderboard() {
 // ---------- custom canvas (upload an image, trace it, place it) ----------
 //
 // FeePerPixel/VandalismFeePerPixel/MaxBulkPixelsPerTx/SetPixels only
-// exist on realms deployed after this feature was added -- the
-// currently-live pixelsandbox predates them, same situation as
-// TopPlacers above, so this whole panel stays disabled with an
-// explanatory label until loadCustomCanvasConfig() succeeds.
+// exist on realms deployed after this feature was added -- same
+// defensive-fallback situation as TopPlacers above, so this whole
+// panel stays disabled with an explanatory label until
+// loadCustomCanvasConfig() succeeds.
 let customFeePerPixel = 100000; // ugnot -- overwritten from chain once available
 let customVandalismFee = 1000000;
 let customMaxBulk = 10;
