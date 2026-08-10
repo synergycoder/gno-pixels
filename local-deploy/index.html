@@ -101,6 +101,18 @@
 
 <div class="batch-stats" id="targetStats"></div>
 
+<hr>
+
+<h1>Migrate historical pixels</h1>
+<p>Migrates real placements off the old <code>pixelsandbox</code> realm via <code>ImportHistoricalPixel</code> — each cell keeps its <b>real original placer address and block height</b> (read live from the old realm, not re-attributed to you). Runs nearest-to-center first. Stops automatically once either limit below is hit, whichever comes first — leave a field blank to not use that limit. Safe to run again later to continue: already-migrated cells just get overwritten with the same value at near-zero extra cost.</p>
+
+<div class="field"><label>GNOT budget for this run</label><input id="migrateBudget" type="text" value="70"></div>
+<div class="field"><label>Max pixels this run (of <span id="totalHistoricalPixels">…</span> total, optional)</label><input id="migrateMaxPixels" type="text" placeholder="leave blank for no pixel limit"></div>
+
+<p><button id="startMigrateBtn">Start migrating</button></p>
+
+<div class="batch-stats" id="migrateStats"></div>
+
 <script>
 let lastEstimate = null;
 
@@ -425,6 +437,92 @@ document.getElementById("startTargetBtn").addEventListener("click", async () => 
 
 // Pick up an already-running target batch on page load (e.g. after a refresh).
 pollTargetBatch();
+
+fetch("/migrate/config").then(r => r.json()).then(cfg => {
+  document.getElementById("totalHistoricalPixels").textContent = cfg.totalHistoricalPixels ?? "?";
+}).catch(() => {
+  document.getElementById("totalHistoricalPixels").textContent = "?";
+});
+
+let migratePollTimer = null;
+
+function renderMigrateBatch(b) {
+  const statsEl = document.getElementById("migrateStats");
+  statsEl.style.display = "block";
+  const pct = b.total ? Math.round((b.completed / b.total) * 100) : 0;
+  const totalGnot = (b.cumulativeUgnot / 1e6).toFixed(3);
+  const storageGnot = (b.cumulativeStorageFeeUgnot / 1e6).toFixed(3);
+  const gasGnot = (b.cumulativeGasFeeUgnot / 1e6).toFixed(4);
+  statsEl.innerHTML =
+    `<div><b>${b.completed} / ${b.total}</b> pixels migrated this run (${pct}%)</div>` +
+    `<div class="progress-bar"><div style="width:${pct}%"></div></div>` +
+    `<div>Spent so far: <b>${totalGnot} GNOT</b> (storage ${storageGnot} + gas ${gasGnot})</div>` +
+    (b.stoppedReason ? `<div>Stopped: ${b.stoppedReason} — run again to continue with the rest.</div>` : "") +
+    (b.lastError ? `<div style="color:var(--error)">Error: ${b.lastError}</div>` : "") +
+    (b.recent && b.recent.length
+      ? `<div class="recent-log">${b.recent.slice().reverse().map(r =>
+          `#${r.index} (${r.x},${r.y}) c${r.colorIndex} by ${r.placer.slice(0, 10)}… @${r.originalHeight} — ${r.storageDeltaBytes}B, ${r.storageFeeUgnot + r.gasFeeUgnot}ugnot, tx ${r.txHash.slice(0, 12)}…`
+        ).join("\n")}</div>`
+      : "");
+}
+
+async function pollMigrateBatch() {
+  const res = await fetch("/migrate/status");
+  const b = await res.json();
+  renderMigrateBatch(b);
+  const btn = document.getElementById("startMigrateBtn");
+  if (b.running) {
+    btn.disabled = true;
+    btn.textContent = `Running… (${b.completed}/${b.total})`;
+    if (!migratePollTimer) migratePollTimer = setInterval(pollMigrateBatch, 2000);
+  } else {
+    btn.disabled = false;
+    btn.textContent = "Start migrating";
+    if (migratePollTimer) { clearInterval(migratePollTimer); migratePollTimer = null; }
+  }
+}
+
+document.getElementById("startMigrateBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  const budgetStr = document.getElementById("migrateBudget").value.trim();
+  const maxPixelsStr = document.getElementById("migrateMaxPixels").value.trim();
+  const targetBudgetGnot = budgetStr ? Number(budgetStr) : null;
+  const maxPixels = maxPixelsStr ? Number(maxPixelsStr) : null;
+  if (!keyringHome || !keyName || !password) {
+    setStatus("Fill in keyring home, key name, and password above first.", "error");
+    return;
+  }
+  if (!targetBudgetGnot && !maxPixels) {
+    alert("Set a GNOT budget or a max pixel count (or both) first.");
+    return;
+  }
+  const limitDesc = [
+    targetBudgetGnot ? `${targetBudgetGnot} GNOT` : null,
+    maxPixels ? `${maxPixels} pixels` : null,
+  ].filter(Boolean).join(" or ");
+  if (!confirm(`This will broadcast real migration transactions until it hits ${limitDesc}, spending real testnet GNOT as it goes. Continue?`)) return;
+  const btn = document.getElementById("startMigrateBtn");
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  try {
+    const res = await fetch("/migrate/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password, maxPixels, targetBudgetGnot }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "failed to start");
+    migratePollTimer = setInterval(pollMigrateBatch, 2000);
+    pollMigrateBatch();
+  } catch (err) {
+    alert("Failed to start migration:\n" + err.message);
+    btn.disabled = false;
+    btn.textContent = "Start migrating";
+  }
+});
+
+// Pick up an already-running migration batch on page load (e.g. after a refresh).
+pollMigrateBatch();
 </script>
 
 </body>

@@ -1,1 +1,4 @@
 local-deploy/prepopulate-log.csv
+local-deploy/settarget-log.csv
+local-deploy/migrate-log.csv
+local-deploy/historical-pixels-cache.json

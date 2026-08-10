@@ -16,6 +16,7 @@ const fs = require("fs");
 const { execFile } = require("child_process");
 const { loadCenterOrderedPixels } = require("./center-order.js");
 const { loadOfficialTargetPixels } = require("./official-target.js");
+const { loadHistoricalPixels } = require("./historical-source.js");
 
 const PORT = 4756;
 const RPC_URL = "https://rpc.sapphire.testnets.gno.land";
@@ -37,6 +38,8 @@ const LOG_PATH = path.join(__dirname, "prepopulate-log.csv");
 const LOG_HEADER = "index,x,y,colorIndex,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
 const TARGET_LOG_PATH = path.join(__dirname, "settarget-log.csv");
 const TARGET_LOG_HEADER = "chunkIndex,pixelCount,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
+const MIGRATE_LOG_PATH = path.join(__dirname, "migrate-log.csv");
+const MIGRATE_LOG_HEADER = "index,x,y,colorIndex,placer,originalHeight,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
 
 // gnokey splits its output across streams: the GAS WANTED/USED/TX HASH
 // summary goes to stdout, but the detailed "--= Error =--" panic trace
@@ -255,6 +258,88 @@ async function runSetOfficialTargetBatch({ keyringHome, keyName, password, batch
   targetBatch.running = false;
 }
 
+// ---------- Real historical-pixel migration batch job ----------
+//
+// Unlike runPrepopulateBatch (which repaints the owner-curated DESIGN,
+// attributed entirely to OWNER_ADDRESS), this migrates REAL placements
+// off the old pixelsandbox realm -- each cell's actual original placer
+// address and block height, sourced live via historical-source.js. Runs
+// nearest-to-center first, and stops on whichever limit comes first:
+// maxPixels, or cumulative spend reaching targetBudgetUgnot (a spend cap
+// is more useful here than a pixel count, since real per-pixel cost
+// varies and this is meant to be run in affordable installments).
+let migrateBatch = {
+  running: false,
+  completed: 0,
+  total: 0,
+  cumulativeUgnot: 0,
+  cumulativeStorageFeeUgnot: 0,
+  cumulativeGasFeeUgnot: 0,
+  lastError: null,
+  stoppedReason: null,
+  recent: [],
+};
+
+function appendMigrateLogRow(row) {
+  if (!fs.existsSync(MIGRATE_LOG_PATH)) fs.writeFileSync(MIGRATE_LOG_PATH, MIGRATE_LOG_HEADER);
+  const line = [
+    row.index, row.x, row.y, row.colorIndex, row.placer, row.originalHeight,
+    row.gasUsed, row.gasWanted, row.gasFeeUgnot,
+    row.storageDeltaBytes, row.storageFeeUgnot, row.cumulativeUgnot, row.txHash, row.timestamp,
+  ].join(",") + "\n";
+  fs.appendFileSync(MIGRATE_LOG_PATH, line);
+}
+
+async function runHistoricalMigrationBatch({ keyringHome, keyName, password, maxPixels, targetBudgetUgnot }) {
+  const allPixels = await loadHistoricalPixels();
+  const pixels = maxPixels ? allPixels.slice(0, maxPixels) : allPixels;
+
+  migrateBatch = {
+    running: true, completed: 0, total: pixels.length,
+    cumulativeUgnot: 0, cumulativeStorageFeeUgnot: 0, cumulativeGasFeeUgnot: 0,
+    lastError: null, stoppedReason: null, recent: [],
+  };
+
+  for (let i = 0; i < pixels.length; i++) {
+    const { x, y, c, placer, height } = pixels[i];
+    const buildArgs = (opts) => callArgs({
+      ...opts, func: "ImportHistoricalPixel",
+      args: [x, y, c, placer, height],
+    });
+    try {
+      const sim = await simulate(buildArgs, { keyringHome, keyName, password });
+      const result = await broadcast(buildArgs, {
+        keyringHome, keyName, password,
+        gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot,
+      });
+      const totalUgnot = sim.gasFeeUgnot + sim.storageFeeUgnot;
+      migrateBatch.cumulativeUgnot += totalUgnot;
+      migrateBatch.cumulativeStorageFeeUgnot += sim.storageFeeUgnot;
+      migrateBatch.cumulativeGasFeeUgnot += sim.gasFeeUgnot;
+      migrateBatch.completed = i + 1;
+      const row = {
+        index: i, x, y, colorIndex: c, placer, originalHeight: height,
+        gasUsed: sim.gasUsed, gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot,
+        storageDeltaBytes: sim.storageDeltaBytes, storageFeeUgnot: sim.storageFeeUgnot,
+        cumulativeUgnot: migrateBatch.cumulativeUgnot, txHash: result.txHash,
+        timestamp: new Date().toISOString(),
+      };
+      appendMigrateLogRow(row);
+      migrateBatch.recent.push(row);
+      if (migrateBatch.recent.length > 20) migrateBatch.recent.shift();
+      if (targetBudgetUgnot && migrateBatch.cumulativeUgnot >= targetBudgetUgnot) {
+        migrateBatch.stoppedReason = `reached the ${(targetBudgetUgnot / 1e6).toFixed(2)} GNOT budget after ${migrateBatch.completed} pixels`;
+        break;
+      }
+    } catch (err) {
+      migrateBatch.lastError = `pixel ${i} (${x},${y}): ` + errText(err);
+      migrateBatch.running = false;
+      return;
+    }
+  }
+  migrateBatch.running = false;
+}
+
 async function runPrepopulateBatch({ keyringHome, keyName, password, maxPixels }) {
   const pixels = loadCenterOrderedPixels().slice(0, maxPixels);
   const height = await fetchChainHeight();
@@ -335,6 +420,16 @@ const server = http.createServer(async (req, res) => {
       totalTargetPixels: loadCenterOrderedPixels().length,
       totalOfficialTargetPixels: loadOfficialTargetPixels().length,
     });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/migrate/config") {
+    try {
+      const pixels = await loadHistoricalPixels();
+      sendJson(res, 200, { totalHistoricalPixels: pixels.length });
+    } catch (err) {
+      sendJson(res, 500, { error: errText(err) });
+    }
     return;
   }
 
@@ -456,6 +551,36 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && req.url === "/settarget/status") {
     sendJson(res, 200, targetBatch);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/migrate/start") {
+    try {
+      const payload = await readBody(req);
+      if (migrateBatch.running) {
+        sendJson(res, 409, { error: "a migration batch is already running" });
+        return;
+      }
+      if (!payload.keyringHome || !payload.keyName || !payload.password) {
+        sendJson(res, 400, { error: "keyringHome, keyName, and password are required" });
+        return;
+      }
+      const maxPixels = payload.maxPixels ? Math.max(1, Number(payload.maxPixels)) : null;
+      const targetBudgetUgnot = payload.targetBudgetGnot ? Math.round(Number(payload.targetBudgetGnot) * 1e6) : null;
+      if (!maxPixels && !targetBudgetUgnot) {
+        sendJson(res, 400, { error: "set either a pixel limit or a GNOT budget" });
+        return;
+      }
+      runHistoricalMigrationBatch({ ...payload, maxPixels, targetBudgetUgnot }); // fire and forget -- polled via /migrate/status
+      sendJson(res, 200, { started: true, maxPixels, targetBudgetUgnot });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/migrate/status") {
+    sendJson(res, 200, migrateBatch);
     return;
   }
 
