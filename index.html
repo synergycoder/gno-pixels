@@ -159,6 +159,7 @@
     border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); pointer-events: none; background: #000;
   }
 
+  .side-note { font-size: 0.72rem; color: var(--text-muted); margin: -0.2rem 0 0; line-height: 1.4; }
   .side-cta-btn {
     width: 100%; padding: 0.65rem 0.9rem; border-radius: 8px; border: 1px dashed var(--border);
     background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 700;
@@ -368,6 +369,8 @@
     </div>
     <p class="status" id="helpStatus"></p>
   </div>
+
+  <p class="side-note">⚠️ "Help place" fees shown are the placement fee only — gno.land also charges a separate, unpredictable on-chain storage deposit on top, which can be several times larger and grows as the board fills up.</p>
 
   <button type="button" class="side-cta-btn" id="navCustomCanvas" title="Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (free if it happens to match the official design). Click to open." disabled>🖼️ Create your own canvas</button>
 
@@ -1603,21 +1606,31 @@ let customMode = "draw"; // "draw" | "text" | "image"
 // before committing to a position; updateCustomCost() in step 2 then
 // replaces it with the real free/normal/vandalism breakdown once a
 // position is chosen.
+// Every cost estimate on this page only reflects the pixelFee() amount
+// (what actually gets attached as "send" on the transaction) -- it does
+// NOT include the separate on-chain storage deposit gno.land charges
+// for writing new data into the realm, which is real money too and can
+// be several times LARGER than the fee itself. That deposit isn't
+// something this page can predict client-side (it depends on the exact
+// shape of the realm's storage trees at the moment of your real
+// transaction, not just how many pixels you're placing), so this is a
+// floor, not the real total -- confirmed against a real transaction:
+// 7 pixels at the normal 0.1 GNOT rate = 0.7 GNOT fee, but the actual
+// storage deposit on top of that was 4.251 GNOT, over 6x the fee.
+const STORAGE_DEPOSIT_CAVEAT =
+  "This is only the placement fee — gno.land also charges a separate on-chain storage deposit for writing new data, " +
+  "which isn't predictable ahead of time and can be several times larger than the fee shown here. It tends to grow as the board fills up.";
+
 function updateTraceCostEstimate() {
   const el = document.getElementById("customTraceCostEstimate");
   if (!customTracedPixels.length) { el.textContent = ""; return; }
   if (!feesSupported) { el.textContent = ""; return; }
   const estUgnot = customTracedPixels.length * customFeePerPixel;
-  el.textContent = `Estimated cost: ~${formatGnot(estUgnot)} at this size (less if some pixels happen to match the official design — that's calculated exactly once you position it).`;
+  el.innerHTML =
+    `Estimated cost: ~${formatGnot(estUgnot)} at this size (less if some pixels happen to match the official design — that's calculated exactly once you position it).` +
+    `<br>⚠️ ${STORAGE_DEPOSIT_CAVEAT}`;
 }
 
-// The contract's own SetPixel/SetPixels treat colorIndex 0 (black) as
-// "erase", not "paint black" (recordPlacement calls grid.Remove for it)
-// -- an untouched cell already reads as black too, so a black cell in a
-// design is PERMANENTLY indistinguishable from an empty one. Left in,
-// it silently inflated a design's "done" count the moment it was
-// submitted (matched the empty board immediately, with nobody actually
-// placing anything) -- reported as "I just submitted this and it
 // Black (colorIndex 0) is legitimate design content -- e.g. "cut a hole
 // back to background" over whatever's currently painted there -- so it
 // stays in the traced/drawn pixel set. Whether a given black pixel
@@ -1626,7 +1639,7 @@ function updateTraceCostEstimate() {
 // exact spot: still-empty there means the placement is a genuine no-op
 // (free, and skipped from what's actually submitted), already-painted
 // there means it's a real erase (priced like any other placement). See
-// classifyPixelForPlacement() in step 2.
+// isRedundantBlackPlacement() in step 2.
 function applyTrace(result) {
   customTracedPixels = result.pixels;
   customTraceWidth = result.width;
@@ -1721,8 +1734,8 @@ function renderLayersList() {
 
   const totalPixels = placed.reduce((n, { layer }) => n + layer.pixels.length, 0);
   const costEl = document.getElementById("customLayersCostEstimate");
-  costEl.textContent = feesSupported
-    ? `${customLayers.length} layer(s), ${totalPixels} pixels combined — ~${formatGnot(totalPixels * customFeePerPixel)} total estimated (worst case).`
+  costEl.innerHTML = feesSupported
+    ? `${customLayers.length} layer(s), ${totalPixels} pixels combined — ~${formatGnot(totalPixels * customFeePerPixel)} total estimated (worst case).<br>⚠️ ${STORAGE_DEPOSIT_CAVEAT}`
     : "";
   updateNextButtonState();
 }
@@ -2086,7 +2099,7 @@ function updateCustomCost() {
     (vandal ? `, ${vandal} ⚠️ overwrite official cells at ${formatGnot(customVandalismFee)} each` : "") +
     (redundant ? `, ${redundant} black pixel(s) over already-empty cells (skipped — no real change, no cost)` : "") +
     `<br><b>~${formatGnot(totalUgnot)} total</b> to fill it in completely — shared across everyone who helps, not paid by you now.` +
-    `<br>Submitting just registers the design (a small gas/storage fee), same as any other transaction.`;
+    `<br>⚠️ ${STORAGE_DEPOSIT_CAVEAT} This applies per-transaction to whoever actually places each pixel, not to you submitting the design now — but submitting itself is also a transaction, so it applies to that too.`;
   if (outOfBounds > 0) html += `<br><span class="custom-warning">${outOfBounds} pixel(s) fall outside the board — move your design.</span>`;
   document.getElementById("customCostSummary").innerHTML = html;
 
