@@ -134,6 +134,11 @@
     background: rgba(108,92,231,0.1); border: 1px solid rgba(108,92,231,0.35); border-radius: 10px;
     padding: 0.7rem 0.8rem; font-size: 0.8rem; text-align: left;
   }
+  /* Gold instead of the community cards' purple -- the official design
+     is a different kind of thing (owner-curated, always free to match),
+     worth visually setting apart from user-submitted designs at a glance. */
+  #officialMiniCard { background: rgba(250,204,21,0.1); border-color: rgba(250,204,21,0.45); }
+  #officialMiniCard .mini-progress-fill { background: #facc15; }
   .mini-card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
   .mini-card-thumb {
     width: 30px; height: 30px; border-radius: 6px; flex: 0 0 auto;
@@ -162,7 +167,6 @@
     border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); pointer-events: none; background: #000;
   }
 
-  .side-note { font-size: 0.72rem; color: var(--text-muted); margin: -0.2rem 0 0; line-height: 1.4; }
   .side-cta-btn {
     width: 100%; padding: 0.65rem 0.9rem; border-radius: 8px; border: 1px dashed var(--border);
     background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 700;
@@ -171,13 +175,6 @@
   .side-cta-btn:disabled { opacity: 0.5; cursor: default; }
   .side-cta-btn:disabled:hover { background: none; border-color: var(--border); }
 
-  .community-toggle-btn {
-    width: 100%; padding: 0.55rem 0.75rem; border-radius: 8px; border: 1px dashed var(--border);
-    background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.82rem; font-weight: 600;
-    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-  }
-  .community-toggle-btn:hover { background: var(--border-soft); border-color: var(--accent); }
-  .community-toggle-count { color: var(--text-muted); font-weight: 400; }
   .community-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 60vh; overflow-y: auto; }
 
   /* A right-click's result used to only ever update coord-readout, right
@@ -389,14 +386,8 @@
     <p class="status" id="helpStatus"></p>
   </div>
 
-  <p class="side-note">⚠️ "Help place" fees shown are the placement fee only — gno.land also charges a separate, unpredictable on-chain storage deposit on top, which can be several times larger and grows as the board fills up.</p>
-
   <button type="button" class="side-cta-btn" id="navCustomCanvas" title="Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (free if it happens to match the official design). Click to open." disabled>🖼️ Create your own canvas</button>
 
-  <button type="button" class="community-toggle-btn" id="communityToggleBtn" style="display:none">
-    <span id="communityToggleLabel">Hide completed</span>
-    <span class="community-toggle-count" id="communityToggleCount"></span>
-  </button>
   <div class="community-list" id="communityDesignsList" style="display:none"></div>
 </aside>
 
@@ -437,7 +428,7 @@
       </div>
 
       <div id="customDrawPane">
-        <p class="modal-hint">Click (or click-and-drag) to paint cells with the selected color. Pick 🧹 to erase a cell.</p>
+        <p class="modal-hint">Left-click (or click-and-drag) paints with the left color below; right-click paints with the right color -- pick 🧹 on either to make it erase instead.</p>
         <div class="field-row">
           <label for="customDrawWidthSlider">Width: <span id="customDrawWidthLabel">20</span> cells</label>
           <div class="slider-with-num">
@@ -453,8 +444,12 @@
           </div>
         </div>
         <div class="field-row">
-          <label>Color</label>
+          <label>Left-click color</label>
           <div class="palette-row" id="customDrawColorRow" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
+        </div>
+        <div class="field-row">
+          <label>Right-click color</label>
+          <div class="palette-row" id="customDrawColorRowSecondary" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
         </div>
         <div class="draw-grid-wrap"><div class="draw-grid" id="customDrawGrid"></div></div>
         <button type="button" class="secondary-btn" id="customDrawClearBtn">Clear all</button>
@@ -1083,6 +1078,11 @@ document.getElementById("helpBtn").addEventListener("click", async () => {
     await placePixel(picked[0][0], picked[0][1], picked[0][2], statusEl);
   }
 });
+document.getElementById("helpPixelCount").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  document.getElementById("helpBtn").click();
+});
 
 // ---------- load + place ----------
 // Snapshot() does 16,384 individual grid.Get() calls (one per board
@@ -1442,13 +1442,12 @@ async function loadCustomCanvasConfig() {
 
 // ---------- community designs (submitted via the modal above) ----------
 async function loadCommunityDesigns() {
-  const toggleBtn = document.getElementById("communityToggleBtn");
   const list = document.getElementById("communityDesignsList");
-  if (!feesSupported) { toggleBtn.style.display = "none"; list.style.display = "none"; return; }
+  if (!feesSupported) { list.style.display = "none"; return; }
   try {
     const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ListCommunityDesigns()");
     const csv = parseGnoEvalString(raw) || "";
-    if (!csv) { toggleBtn.style.display = "none"; list.style.display = "none"; return; }
+    if (!csv) { list.style.display = "none"; return; }
     const rows = csv.split(";").map((entry) => {
       const [id, name, count] = entry.split(",");
       return { id, name, count: Number(count) };
@@ -1511,7 +1510,6 @@ function drawMiniThumbnail(canvas, pixels) {
 
 let communityPendingById = {};
 let communityDesignsById = {};
-let hideCompletedCommunity = false;
 
 // Hover-to-zoom for a thumbnail too small to make out clearly -- no
 // click, appears on mouseenter, gone on mouseleave. Reuses boundsOf()
@@ -1578,22 +1576,11 @@ function renderCommunityDesigns(designs) {
 }
 
 // Split from renderCommunityDesigns() so toggling "hide completed" just
-// re-filters the already-fetched data instead of re-querying chain --
-// the list itself is always visible now (finished designs are filtered
-// OUT of it, not the whole panel collapsed).
+// re-renders the already-fetched data (no re-query) -- split out so
+// other callers can refresh the DOM without hitting the chain again.
 function renderCommunityListDom() {
   const list = document.getElementById("communityDesignsList");
-  const toggleBtn = document.getElementById("communityToggleBtn");
-  const completed = lastCommunityWithProgress.filter((d) => d.pending.length === 0);
-  const visible = hideCompletedCommunity ? lastCommunityWithProgress.filter((d) => d.pending.length > 0) : lastCommunityWithProgress;
-
-  if (completed.length === 0) {
-    toggleBtn.style.display = "none";
-  } else {
-    toggleBtn.style.display = "";
-    document.getElementById("communityToggleLabel").textContent = hideCompletedCommunity ? "Show completed" : "Hide completed";
-    document.getElementById("communityToggleCount").textContent = `(${completed.length})`;
-  }
+  const visible = lastCommunityWithProgress;
 
   list.innerHTML = visible.map((d) => {
     communityPendingById[d.id] = d.pending;
@@ -1641,12 +1628,15 @@ function renderCommunityListDom() {
       }
     });
   });
+  list.querySelectorAll(".mini-count-input[data-id]").forEach((input) => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const btn = list.querySelector(`.community-help-btn[data-id="${input.dataset.id}"]`);
+      if (btn) btn.click();
+    });
+  });
 }
-
-document.getElementById("communityToggleBtn").addEventListener("click", () => {
-  hideCompletedCommunity = !hideCompletedCommunity;
-  renderCommunityListDom();
-});
 
 function hexToRgb(hex) {
   const v = parseInt(hex.slice(1), 16);
@@ -1997,34 +1987,41 @@ function retraceCurrentText() {
 
 // ---------- free draw (manual pixel-by-pixel design) ----------
 //
-// customDrawColor is null for the eraser, otherwise a palette index --
-// distinct from "0 = black", since index 0 is a real paintable color
-// here (unlike the live board, where SetPixel's colorIndex 0 means
-// erase). customDrawGridData holds null for "not part of the design"
-// (skipped when building the pixel list, same as a transparent pixel
-// in an uploaded image) vs an actual color index for a painted cell.
+// customDrawColor/customDrawColorSecondary are null for the eraser,
+// otherwise a palette index -- distinct from "0 = black", since index
+// 0 is a real paintable color here (unlike the live board, where
+// SetPixel's colorIndex 0 means erase). customDrawGridData holds null
+// for "not part of the design" (skipped when building the pixel list,
+// same as a transparent pixel in an uploaded image) vs an actual color
+// index for a painted cell.
 let customDrawColor = 1;
+let customDrawColorSecondary = null; // right-click's own color, defaults to eraser
 let customDrawGridData = [];
 let customDrawW = 20, customDrawH = 20;
 let drawPainting = false;
 
-function buildCustomDrawPalette() {
-  const el = document.getElementById("customDrawColorRow");
+function buildPaletteRow(elId, selected, onSelect) {
+  const el = document.getElementById(elId);
   if (!el || !paletteColors.length) return;
   el.innerHTML = "";
   paletteColors.forEach((hex, i) => {
     const sw = document.createElement("div");
-    sw.className = "swatch" + (customDrawColor === i ? " selected" : "");
+    sw.className = "swatch" + (selected === i ? " selected" : "");
     sw.style.background = hex;
     sw.title = hex;
-    sw.addEventListener("click", () => { customDrawColor = i; buildCustomDrawPalette(); });
+    sw.addEventListener("click", onSelect.bind(null, i));
     el.appendChild(sw);
   });
   const eraser = document.createElement("div");
-  eraser.className = "swatch eraser-swatch" + (customDrawColor === null ? " selected" : "");
-  eraser.title = "Eraser";
-  eraser.addEventListener("click", () => { customDrawColor = null; buildCustomDrawPalette(); });
+  eraser.className = "swatch eraser-swatch" + (selected === null ? " selected" : "");
+  eraser.title = "Eraser (transparent)";
+  eraser.addEventListener("click", onSelect.bind(null, null));
   el.appendChild(eraser);
+}
+
+function buildCustomDrawPalette() {
+  buildPaletteRow("customDrawColorRow", customDrawColor, (v) => { customDrawColor = v; buildCustomDrawPalette(); });
+  buildPaletteRow("customDrawColorRowSecondary", customDrawColorSecondary, (v) => { customDrawColorSecondary = v; buildCustomDrawPalette(); });
 }
 
 function paintDrawCell(i, cell, colorOverride) {
@@ -2035,9 +2032,10 @@ function paintDrawCell(i, cell, colorOverride) {
   updateDrawTrace();
 }
 
-// Right-click paints black directly, skipping the swatch row -- a quick
-// shortcut for outlines/shading without breaking your actual selected
-// color. drawPaintColor is fixed for the whole drag (set once on
+// Right-click paints with its own independently-chosen color (or
+// eraser), skipping the left-click swatch row -- a quick shortcut for
+// outlines/shading/erasing without disturbing your actual left-click
+// selection. drawPaintColor is fixed for the whole drag (set once on
 // mousedown), so dragging across cells with the button held keeps using
 // whichever color that particular drag started with.
 let drawPaintColor = null;
@@ -2051,7 +2049,7 @@ function makeDrawCell(i) {
   cell.addEventListener("mousedown", (e) => {
     e.preventDefault();
     drawPainting = true;
-    drawPaintColor = e.button === 2 ? 0 : customDrawColor;
+    drawPaintColor = e.button === 2 ? customDrawColorSecondary : customDrawColor;
     paintDrawCell(i, cell, drawPaintColor);
   });
   cell.addEventListener("mouseenter", () => { if (drawPainting) paintDrawCell(i, cell, drawPaintColor); });
