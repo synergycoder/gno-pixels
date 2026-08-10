@@ -336,7 +336,7 @@
     </div>
     <p class="mini-card-meta" id="helpProgressText">Loading progress…</p>
     <div class="mini-progress-wrap"><div class="mini-progress-fill" id="helpProgressFill" style="width:0%"></div></div>
-    <button class="mini-help-btn" id="helpBtn">Help place a pixel</button>
+    <button class="mini-help-btn" id="helpBtn">Help place pixels</button>
     <p class="status" id="helpStatus"></p>
   </div>
 
@@ -936,10 +936,16 @@ let currentPending = [];
 
 document.getElementById("helpBtn").addEventListener("click", async () => {
   if (currentPending.length === 0) return;
-  const [x, y, color] = currentPending[Math.floor(Math.random() * currentPending.length)];
-  document.getElementById("helpStatus").textContent = `Picked (${x}, ${y}) for you — scrolling there…`;
-  scrollCellIntoView(x, y);
-  await placePixel(x, y, color, document.getElementById("helpStatus"));
+  const statusEl = document.getElementById("helpStatus");
+  const batchSize = feesSupported ? Math.min(customMaxBulk, currentPending.length) : 1;
+  const picked = pickRandomPending(currentPending, batchSize);
+  statusEl.textContent = `Picked ${picked.length} pixel(s) for you — scrolling there…`;
+  scrollCellIntoView(picked[0][0], picked[0][1]);
+  if (picked.length > 1) {
+    await placePixelsBulk(picked, statusEl);
+  } else {
+    await placePixel(picked[0][0], picked[0][1], picked[0][2], statusEl);
+  }
 });
 
 // ---------- load + place ----------
@@ -1037,6 +1043,57 @@ async function placePixel(x, y, colorIndex, statusElOverride) {
     placeInFlight = false;
     boardEl.classList.remove("busy");
   }
+}
+
+// Places several pixels in ONE transaction via the contract's own
+// SetPixels bulk call -- one signature, one fee payment (summed), one
+// cooldown check for the whole batch, instead of needing to wait out
+// CooldownBlocks between each of N separate SetPixel calls. Used by
+// both "help" flows below; the plain click-a-single-cell flow still
+// uses placePixel(), since that's a deliberate one-cell-at-a-time
+// interaction, not a "place several for me" one.
+async function placePixelsBulk(pixels, statusElOverride) {
+  if (placeInFlight || !pixels.length) return;
+  const boardEl = document.getElementById("board");
+  const statusEl = statusElOverride || document.getElementById("placeStatus");
+  placeInFlight = true;
+  boardEl.classList.add("busy");
+  statusEl.textContent = `Connecting to Adena to place ${pixels.length} pixels…`;
+  try {
+    const address = await ensureAdenaConnected();
+    applyConnectedUI(address);
+    const feeUgnot = feesSupported
+      ? pixels.reduce((sum, [x, y, c]) => sum + pixelFeeLocal(x, y, c), 0)
+      : 0;
+    const encoded = pixels.map(([x, y, c]) => `${x},${y},${c}`).join(";");
+    const res = await window.adena.DoContract({
+      messages: [{
+        type: "/vm.m_call",
+        value: { caller: address, send: feeUgnot > 0 ? `${feeUgnot}ugnot` : "", pkg_path: PIXEL_REALM_PATH, func: "SetPixels", args: [encoded] },
+      }],
+      networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
+    });
+    if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
+    statusEl.textContent = `Placed ${pixels.length} pixels! Refreshing…`;
+    setTimeout(loadCanvas, 2000);
+  } catch (err) {
+    statusEl.textContent = "Failed: " + err.message;
+  } finally {
+    placeInFlight = false;
+    boardEl.classList.remove("busy");
+  }
+}
+
+// Sampling without replacement -- "help" picks several DISTINCT pending
+// cells, not the same one repeated.
+function pickRandomPending(pending, n) {
+  const pool = pending.slice();
+  const picked = [];
+  while (picked.length < n && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(i, 1)[0]);
+  }
+  return picked;
 }
 
 // ---------- leaderboard ----------
@@ -1277,7 +1334,7 @@ function renderCommunityDesigns(designs) {
         </div>
         <div class="mini-progress-wrap"><div class="mini-progress-fill" style="width:${pct}%"></div></div>
         <div class="mini-card-meta">${d.done} / ${d.pixels.length} placed</div>
-        <button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}" ${d.pending.length === 0 ? "disabled" : ""}>${d.pending.length === 0 ? "Done! 🎉" : "Help place a pixel"}</button>
+        <button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}" ${d.pending.length === 0 ? "disabled" : ""}>${d.pending.length === 0 ? "Done! 🎉" : "Help place pixels"}</button>
       </div>`;
   }).join("");
 
@@ -1290,9 +1347,14 @@ function renderCommunityDesigns(designs) {
     btn.addEventListener("click", async () => {
       const pending = communityPendingById[btn.dataset.id] || [];
       if (!pending.length) return;
-      const [x, y, color] = pending[Math.floor(Math.random() * pending.length)];
-      scrollCellIntoView(x, y);
-      await placePixel(x, y, color);
+      const batchSize = feesSupported ? Math.min(customMaxBulk, pending.length) : 1;
+      const picked = pickRandomPending(pending, batchSize);
+      scrollCellIntoView(picked[0][0], picked[0][1]);
+      if (picked.length > 1) {
+        await placePixelsBulk(picked);
+      } else {
+        await placePixel(picked[0][0], picked[0][1], picked[0][2]);
+      }
     });
   });
 }
