@@ -233,6 +233,12 @@
   }
   .modal h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
   .modal-hint { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 1rem; }
+  .modal-hint code { font-family: ui-monospace, monospace; background: var(--border-soft); padding: 0.1rem 0.35rem; border-radius: 4px; }
+  .feature-list { display: flex; flex-direction: column; gap: 0.85rem; }
+  .feature-item { display: flex; align-items: flex-start; gap: 0.75rem; }
+  .feature-icon { font-size: 1.4rem; line-height: 1.3; flex: 0 0 auto; }
+  .feature-item b { font-size: 0.9rem; }
+  .feature-item p { margin: 0.15rem 0 0; font-size: 0.83rem; color: var(--text-muted); }
   .modal-close {
     position: absolute; top: 1rem; right: 1rem; border: none; background: none; color: var(--text-muted);
     cursor: pointer; font-size: 1.1rem; padding: 0.2rem 0.5rem; border-radius: 4px;
@@ -296,6 +302,7 @@
 <header class="site-header">
   <div class="site-header-inner">
     <div class="site-header-left">
+      <button type="button" class="header-nav-link" id="navAbout" title="What is GNO Pixels? Click to open.">ℹ️ About</button>
       <button type="button" class="header-nav-link" id="navCustomCanvas" title="Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (free if it happens to match the official design). Click to open." disabled>🖼️ Your own canvas</button>
       <button type="button" class="header-nav-link" id="navLeaderboard" title="See who's placed the most pixels on the board. Click to open.">🏆 Top contributors</button>
     </div>
@@ -329,7 +336,7 @@
     </div>
     <p class="mini-card-meta" id="helpProgressText">Loading progress…</p>
     <div class="mini-progress-wrap"><div class="mini-progress-fill" id="helpProgressFill" style="width:0%"></div></div>
-    <button class="mini-help-btn" id="helpBtn">Place the next pixel for me</button>
+    <button class="mini-help-btn" id="helpBtn">Help place a pixel</button>
     <p class="status" id="helpStatus"></p>
   </div>
 
@@ -454,6 +461,43 @@
     <h2>🏆 Top contributors</h2>
     <p class="modal-hint">Every successful placement counts toward your total, including recoloring or erasing an existing cell.</p>
     <ol class="leaderboard" id="leaderboard"><li class="muted">Loading…</li></ol>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="aboutModalBackdrop" style="display:none">
+  <div class="modal" id="aboutModal">
+    <button class="modal-close" id="aboutModalClose" type="button" title="Close">✕</button>
+    <h2>👾 GNO Pixels</h2>
+    <p class="modal-hint">A collaborative on-chain canvas for gno.land — every single pixel is a real, signed transaction on <strong>sapphire-1</strong>, permanently recorded by the <code>pixels</code> realm. No backend, no database — the board you see is read straight off the chain.</p>
+
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="feature-icon">🏁</span>
+        <div><b>Official design</b><p>An owner-curated gno.land logo sits at the center of the board — placing toward it is always free. Help finish it from the sidebar's progress card.</p></div>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">🛡️</span>
+        <div><b>Anti-vandalism pricing</b><p>Painting open space costs a small fee. Overwriting an official-design cell with the <em>wrong</em> color costs 10x more — griefing the logo is deliberately expensive, matching its own color is always free.</p></div>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">🕵️</span>
+        <div><b>Right-click any cell</b><p>See exactly who placed it and at what block height — every pixel's provenance is public and on-chain, not just its color.</p></div>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">🏆</span>
+        <div><b>Leaderboard</b><p>Every successful placement counts toward a public top-contributors ranking — see it from the header.</p></div>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">🖼️</span>
+        <div><b>Your own canvas</b><p>Upload an image, type text, or free-draw your own design — combine them, position it anywhere, and submit it as a shared target the whole community can help fill in, paying per pixel as they go.</p></div>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">⛓️</span>
+        <div><b>Fully on-chain, always live</b><p>No polling gimmicks — the board, palette, stats, and leaderboard are all queried live from the realm every few seconds.</p></div>
+      </div>
+    </div>
+
+    <p class="modal-hint" style="margin-top:1rem">Built independently by the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> project — not affiliated with the gno.land team.</p>
   </div>
 </div>
 
@@ -1841,6 +1885,18 @@ document.getElementById("navLeaderboard").addEventListener("click", openLeaderbo
 document.getElementById("leaderboardModalClose").addEventListener("click", closeLeaderboardModal);
 document.getElementById("leaderboardModalBackdrop").addEventListener("click", (e) => {
   if (e.target.id === "leaderboardModalBackdrop") closeLeaderboardModal();
+});
+
+function openAboutModal() {
+  document.getElementById("aboutModalBackdrop").style.display = "";
+}
+function closeAboutModal() {
+  document.getElementById("aboutModalBackdrop").style.display = "none";
+}
+document.getElementById("navAbout").addEventListener("click", openAboutModal);
+document.getElementById("aboutModalClose").addEventListener("click", closeAboutModal);
+document.getElementById("aboutModalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "aboutModalBackdrop") closeAboutModal();
 });
 
 document.getElementById("titleHome").addEventListener("click", () => {
