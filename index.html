@@ -500,7 +500,7 @@
     </div>
 
     <div id="customStep2" style="display:none">
-      <p class="modal-hint">Click on the board to position your design (drag the header if you need to move this dialog).</p>
+      <p class="modal-hint">Click and drag on the preview to position your design (drag the header if you need to move this dialog).</p>
       <canvas id="customPreviewCanvas" class="preview-canvas"></canvas>
       <p class="overlap-warning" id="customOverlapWarning" style="display:none"></p>
       <div class="field-row"><label for="customDesignName">Give it a name (required — shown to the community)</label><input type="text" id="customDesignName" maxlength="60" placeholder="e.g. Our team logo" required></div>
@@ -2440,8 +2440,15 @@ function updateCustomCost() {
   document.getElementById("customSubmitBtn").disabled = outOfBounds > 0 || customTracedPixels.length === 0;
 }
 
-document.getElementById("customPreviewCanvas").addEventListener("click", (e) => {
-  const canvas = e.currentTarget;
+// Click-and-drag to position a design (was click-only -- each click
+// re-centered the design on that spot, so fine-tuning meant a series
+// of imprecise re-clicks instead of a smooth motion). mousemove/mouseup
+// are on document, not the canvas, so a fast drag that leaves the
+// canvas bounds mid-motion still tracks correctly.
+let draggingCustomDesign = false;
+let customDragRafPending = false;
+
+function positionCustomDesignFromEvent(e, canvas) {
   const rect = canvas.getBoundingClientRect();
   const cellPxOnScreen = rect.width / gridWidth;
   const cx = Math.floor((e.clientX - rect.left) / cellPxOnScreen);
@@ -2449,8 +2456,36 @@ document.getElementById("customPreviewCanvas").addEventListener("click", (e) => 
   customOrigin.x = originX + cx - Math.floor(customTraceWidth / 2);
   customOrigin.y = originY + cy - Math.floor(customTraceHeight / 2);
   customPositioned = true;
+}
+
+document.getElementById("customPreviewCanvas").addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  draggingCustomDesign = true;
+  positionCustomDesignFromEvent(e, e.currentTarget);
   drawCustomPreview();
   updateCustomCost();
+});
+
+// drawCustomPreview() repaints the whole board snapshot (up to
+// gridWidth*gridHeight cells) -- too expensive to run on every single
+// mousemove during a drag, so redraws are coalesced to at most once
+// per animation frame instead of stacking one per pixel of movement.
+document.addEventListener("mousemove", (e) => {
+  if (!draggingCustomDesign) return;
+  positionCustomDesignFromEvent(e, document.getElementById("customPreviewCanvas"));
+  if (customDragRafPending) return;
+  customDragRafPending = true;
+  requestAnimationFrame(() => {
+    customDragRafPending = false;
+    drawCustomPreview();
+  });
+});
+
+document.addEventListener("mouseup", () => {
+  if (!draggingCustomDesign) return;
+  draggingCustomDesign = false;
+  drawCustomPreview();
+  updateCustomCost(); // full cost breakdown only recomputed once the drag settles
 });
 
 document.getElementById("customNextBtn").addEventListener("click", () => {
