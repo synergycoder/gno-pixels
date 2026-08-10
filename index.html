@@ -1640,12 +1640,15 @@ function renderCommunityDesigns(designs) {
     const pending = d.pixels.filter(([x, y, c]) => liveColorAt(x, y) !== c);
     return { ...d, pending, done: d.pixels.length - pending.length };
   });
-  // Unfinished first, finished last -- among unfinished, least-done first
-  // so the designs that most need help surface at the top.
+  // Unfinished first, finished last -- within each group, oldest
+  // (earliest submitted) first. Ids are assigned sequentially at
+  // submission time ("d0", "d1", ...), so the numeric suffix IS
+  // creation order.
+  const designIdNum = (id) => Number((id || "").replace(/^d/, "")) || 0;
   withProgress.sort((a, b) => {
     const aDone = a.pending.length === 0, bDone = b.pending.length === 0;
     if (aDone !== bDone) return aDone ? 1 : -1;
-    return a.done / (a.pixels.length || 1) - b.done / (b.pixels.length || 1);
+    return designIdNum(a.id) - designIdNum(b.id);
   });
   lastCommunityWithProgress = withProgress;
   renderCommunityListDom();
