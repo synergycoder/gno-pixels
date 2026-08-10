@@ -1585,6 +1585,11 @@ function drawMiniThumbnail(canvas, pixels) {
 }
 
 let communityPendingById = {};
+// Remembers what someone typed into a design's "how many pixels" box
+// across re-renders -- the whole list gets rebuilt (innerHTML) on
+// every poll and again a couple seconds after every placement, which
+// used to silently reset a typed value back to the hardcoded "1".
+let communityPixelCountByDesign = {};
 let communityDesignsById = {};
 
 // Hover-to-zoom for a thumbnail too small to make out clearly -- no
@@ -1666,6 +1671,7 @@ function renderCommunityListDom() {
     communityDesignsById[d.id] = d;
     const pct = d.pixels.length ? Math.round((d.done / d.pixels.length) * 100) : 0;
     const maxPick = Math.max(1, Math.min(10, d.pending.length));
+    const savedCount = Math.max(1, Math.min(maxPick, Number(communityPixelCountByDesign[d.id]) || 1));
     return `
       <div class="mini-card">
         <div class="mini-card-header">
@@ -1677,7 +1683,7 @@ function renderCommunityListDom() {
         ${d.pending.length === 0
           ? `<button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}" disabled>Done! 🎉</button>`
           : `<div class="mini-help-row">
-              <input type="number" class="mini-count-input" data-id="${d.id}" min="1" max="${maxPick}" value="1" title="How many pixels to place (1-${maxPick})">
+              <input type="number" class="mini-count-input" data-id="${d.id}" min="1" max="${maxPick}" value="${savedCount}" title="How many pixels to place (1-${maxPick})">
               <button type="button" class="mini-help-btn community-help-btn" data-id="${d.id}">Help place pixels</button>
             </div>`}
       </div>`;
@@ -1708,6 +1714,7 @@ function renderCommunityListDom() {
     });
   });
   list.querySelectorAll(".mini-count-input[data-id]").forEach((input) => {
+    input.addEventListener("input", () => { communityPixelCountByDesign[input.dataset.id] = input.value; });
     input.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
