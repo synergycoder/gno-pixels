@@ -285,16 +285,14 @@
   .draw-grid .draw-cell { width: 14px; height: 14px; border: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
   .draw-grid .draw-cell:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
   .eraser-swatch, .draw-grid .draw-cell.empty {
-    background-image:
-      linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%);
     background-color: #333;
+    background-image: conic-gradient(#666 90deg, transparent 90deg 180deg, #666 180deg 270deg, transparent 270deg);
   }
-  .eraser-swatch { background-size: 10px 10px; background-position: 0 0, 0 5px, 5px -5px, -5px 0px; }
+  .eraser-swatch { background-size: 10px 10px; }
   /* Smaller tile for the 14px draw cells -- distinguishes a genuinely
      untouched cell from one deliberately painted black (colorIndex 0),
      which used to look pixel-identical (both solid black). */
-  .draw-grid .draw-cell.empty { background-size: 6px 6px; background-position: 0 0, 0 3px, 3px -3px, -3px 0px; }
+  .draw-grid .draw-cell.empty { background-size: 6px 6px; }
   .example-compare { display: flex; gap: 0.8rem; margin: 0.8rem 0; }
   .example-item { flex: 1; text-align: center; }
   .example-item p { font-size: 0.72rem; color: var(--text-muted); margin: 0.35rem 0 0; }
