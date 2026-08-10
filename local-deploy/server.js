@@ -15,6 +15,7 @@ const path = require("path");
 const fs = require("fs");
 const { execFile } = require("child_process");
 const { loadCenterOrderedPixels } = require("./center-order.js");
+const { loadOfficialTargetPixels } = require("./official-target.js");
 
 const PORT = 4756;
 const RPC_URL = "https://rpc.sapphire.testnets.gno.land";
@@ -26,6 +27,8 @@ const SIMULATE_GAS_CEILING = "50000000";
 const GAS_MARGIN = 0.1; // matches the sibling dashboard's proven simulate-then-broadcast margin
 const LOG_PATH = path.join(__dirname, "prepopulate-log.csv");
 const LOG_HEADER = "index,x,y,colorIndex,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
+const TARGET_LOG_PATH = path.join(__dirname, "settarget-log.csv");
+const TARGET_LOG_HEADER = "chunkIndex,pixelCount,gasUsed,gasWanted,gasFeeUgnot,storageDeltaBytes,storageFeeUgnot,cumulativeUgnot,txHash,timestamp\n";
 
 // gnokey splits its output across streams: the GAS WANTED/USED/TX HASH
 // summary goes to stdout, but the detailed "--= Error =--" panic trace
@@ -165,6 +168,85 @@ function appendLogRow(row) {
   fs.appendFileSync(LOG_PATH, line);
 }
 
+// ---------- SetOfficialTarget batch job ----------
+//
+// Unlike ImportHistoricalPixel (one pixel per call), SetOfficialTarget
+// already accepts a whole "x,y,c;x,y,c;..." batch per call -- this job
+// just chunks the 843-entry design into affordably-sized transactions
+// instead of needing the ~164 GNOT full registration cost upfront in a
+// single call. SetOfficialTarget is additive (see contract/pixels.gno),
+// so re-running this after a partial failure is safe: already-registered
+// entries just get overwritten with the same value, at near-zero extra
+// storage cost since no new bytes are added for them.
+let targetBatch = {
+  running: false,
+  completedPixels: 0,
+  totalPixels: 0,
+  completedChunks: 0,
+  totalChunks: 0,
+  cumulativeUgnot: 0,
+  cumulativeStorageFeeUgnot: 0,
+  cumulativeGasFeeUgnot: 0,
+  lastError: null,
+  recent: [],
+};
+
+function appendTargetLogRow(row) {
+  if (!fs.existsSync(TARGET_LOG_PATH)) fs.writeFileSync(TARGET_LOG_PATH, TARGET_LOG_HEADER);
+  const line = [
+    row.chunkIndex, row.pixelCount, row.gasUsed, row.gasWanted, row.gasFeeUgnot,
+    row.storageDeltaBytes, row.storageFeeUgnot, row.cumulativeUgnot, row.txHash, row.timestamp,
+  ].join(",") + "\n";
+  fs.appendFileSync(TARGET_LOG_PATH, line);
+}
+
+async function runSetOfficialTargetBatch({ keyringHome, keyName, password, batchSize }) {
+  const pixels = loadOfficialTargetPixels();
+  const chunks = [];
+  for (let i = 0; i < pixels.length; i += batchSize) chunks.push(pixels.slice(i, i + batchSize));
+
+  targetBatch = {
+    running: true, completedPixels: 0, totalPixels: pixels.length,
+    completedChunks: 0, totalChunks: chunks.length,
+    cumulativeUgnot: 0, cumulativeStorageFeeUgnot: 0, cumulativeGasFeeUgnot: 0,
+    lastError: null, recent: [],
+  };
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const encoded = chunk.map(([x, y, c]) => `${x},${y},${c}`).join(";");
+    const buildArgs = (opts) => callArgs({ ...opts, func: "SetOfficialTarget", args: [encoded] });
+    try {
+      const sim = await simulate(buildArgs, { keyringHome, keyName, password });
+      const result = await broadcast(buildArgs, {
+        keyringHome, keyName, password,
+        gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot,
+      });
+      const totalUgnot = sim.gasFeeUgnot + sim.storageFeeUgnot;
+      targetBatch.cumulativeUgnot += totalUgnot;
+      targetBatch.cumulativeStorageFeeUgnot += sim.storageFeeUgnot;
+      targetBatch.cumulativeGasFeeUgnot += sim.gasFeeUgnot;
+      targetBatch.completedPixels += chunk.length;
+      targetBatch.completedChunks = i + 1;
+      const row = {
+        chunkIndex: i, pixelCount: chunk.length,
+        gasUsed: sim.gasUsed, gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot,
+        storageDeltaBytes: sim.storageDeltaBytes, storageFeeUgnot: sim.storageFeeUgnot,
+        cumulativeUgnot: targetBatch.cumulativeUgnot, txHash: result.txHash,
+        timestamp: new Date().toISOString(),
+      };
+      appendTargetLogRow(row);
+      targetBatch.recent.push(row);
+      if (targetBatch.recent.length > 20) targetBatch.recent.shift();
+    } catch (err) {
+      targetBatch.lastError = `chunk ${i} (${chunk.length} pixels, starting at index ${i * batchSize}): ` + errText(err);
+      targetBatch.running = false;
+      return;
+    }
+  }
+  targetBatch.running = false;
+}
+
 async function runPrepopulateBatch({ keyringHome, keyName, password, maxPixels }) {
   const pixels = loadCenterOrderedPixels().slice(0, maxPixels);
   const height = await fetchChainHeight();
@@ -240,7 +322,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && req.url === "/config") {
-    sendJson(res, 200, { pkgPath: PKG_PATH, chainId: CHAIN_ID, rpcUrl: RPC_URL, totalTargetPixels: loadCenterOrderedPixels().length });
+    sendJson(res, 200, {
+      pkgPath: PKG_PATH, chainId: CHAIN_ID, rpcUrl: RPC_URL,
+      totalTargetPixels: loadCenterOrderedPixels().length,
+      totalOfficialTargetPixels: loadOfficialTargetPixels().length,
+    });
     return;
   }
 
@@ -337,6 +423,31 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && req.url === "/prepopulate/status") {
     sendJson(res, 200, batch);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/settarget/start") {
+    try {
+      const payload = await readBody(req);
+      if (targetBatch.running) {
+        sendJson(res, 409, { error: "a settarget batch is already running" });
+        return;
+      }
+      if (!payload.keyringHome || !payload.keyName || !payload.password) {
+        sendJson(res, 400, { error: "keyringHome, keyName, and password are required" });
+        return;
+      }
+      const batchSize = Math.max(1, Math.min(Number(payload.batchSize) || 50, 200));
+      runSetOfficialTargetBatch({ ...payload, batchSize }); // fire and forget -- polled via /settarget/status
+      sendJson(res, 200, { started: true, batchSize });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/settarget/status") {
+    sendJson(res, 200, targetBatch);
     return;
   }
 

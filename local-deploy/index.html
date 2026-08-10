@@ -90,6 +90,17 @@
 
 <div class="batch-stats" id="batchStats"></div>
 
+<hr>
+
+<h1>Register official target</h1>
+<p>Registers the <span id="totalOfficialPixels">843</span>-cell official design via <code>SetOfficialTarget</code> (owner-only) — this is what makes placing toward the logo free and everything else cost the normal per-pixel fee. <code>SetOfficialTarget</code> already accepts a whole batch of pixels per call, so this packs the design into affordably-sized transactions instead of needing the full ~164 GNOT registration cost in one call. It's additive and safe to re-run if it stops partway — already-registered cells just get rewritten with the same value, at near-zero extra storage cost.</p>
+
+<div class="field"><label>Pixels per transaction</label><input id="targetBatchSize" type="text" value="50"></div>
+
+<p><button id="startTargetBtn">Register official target</button></p>
+
+<div class="batch-stats" id="targetStats"></div>
+
 <script>
 let lastEstimate = null;
 
@@ -98,6 +109,7 @@ fetch("/config").then(r => r.json()).then(cfg => {
   document.getElementById("chainId").textContent = cfg.chainId;
   document.getElementById("totalPixels").textContent = cfg.totalTargetPixels;
   document.getElementById("maxPixels").value = cfg.totalTargetPixels;
+  document.getElementById("totalOfficialPixels").textContent = cfg.totalOfficialTargetPixels;
 });
 
 function formValues() {
@@ -345,6 +357,74 @@ document.getElementById("startBatchBtn").addEventListener("click", async () => {
 
 // Pick up an already-running batch on page load (e.g. after a refresh).
 pollBatch();
+
+let targetPollTimer = null;
+
+function renderTargetBatch(b) {
+  const statsEl = document.getElementById("targetStats");
+  statsEl.style.display = "block";
+  const pct = b.totalPixels ? Math.round((b.completedPixels / b.totalPixels) * 100) : 0;
+  const totalGnot = (b.cumulativeUgnot / 1e6).toFixed(3);
+  const storageGnot = (b.cumulativeStorageFeeUgnot / 1e6).toFixed(3);
+  const gasGnot = (b.cumulativeGasFeeUgnot / 1e6).toFixed(4);
+  statsEl.innerHTML =
+    `<div><b>${b.completedPixels} / ${b.totalPixels}</b> pixels registered, ${b.completedChunks}/${b.totalChunks} transactions (${pct}%)</div>` +
+    `<div class="progress-bar"><div style="width:${pct}%"></div></div>` +
+    `<div>Spent so far: <b>${totalGnot} GNOT</b> (storage ${storageGnot} + gas ${gasGnot})</div>` +
+    (b.lastError ? `<div style="color:var(--error)">Stopped: ${b.lastError}</div>` : "") +
+    (b.recent && b.recent.length
+      ? `<div class="recent-log">${b.recent.slice().reverse().map(r =>
+          `chunk #${r.chunkIndex} (${r.pixelCount} px) — ${r.storageDeltaBytes}B, ${r.storageFeeUgnot + r.gasFeeUgnot}ugnot, tx ${r.txHash.slice(0, 12)}…`
+        ).join("\n")}</div>`
+      : "");
+}
+
+async function pollTargetBatch() {
+  const res = await fetch("/settarget/status");
+  const b = await res.json();
+  renderTargetBatch(b);
+  const btn = document.getElementById("startTargetBtn");
+  if (b.running) {
+    btn.disabled = true;
+    btn.textContent = `Running… (${b.completedPixels}/${b.totalPixels})`;
+    if (!targetPollTimer) targetPollTimer = setInterval(pollTargetBatch, 2000);
+  } else {
+    btn.disabled = false;
+    btn.textContent = "Register official target";
+    if (targetPollTimer) { clearInterval(targetPollTimer); targetPollTimer = null; }
+  }
+}
+
+document.getElementById("startTargetBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  const batchSize = Number(document.getElementById("targetBatchSize").value) || 50;
+  if (!keyringHome || !keyName || !password) {
+    setStatus("Fill in keyring home, key name, and password above first.", "error");
+    return;
+  }
+  if (!confirm(`This will broadcast real transactions registering the official target, spending real testnet GNOT as it goes (roughly 164 GNOT total for all 843 cells). Continue?`)) return;
+  const btn = document.getElementById("startTargetBtn");
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  try {
+    const res = await fetch("/settarget/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password, batchSize }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "failed to start");
+    targetPollTimer = setInterval(pollTargetBatch, 2000);
+    pollTargetBatch();
+  } catch (err) {
+    setStatus("Failed to start target registration:\n" + err.message, "error");
+    btn.disabled = false;
+    btn.textContent = "Register official target";
+  }
+});
+
+// Pick up an already-running target batch on page load (e.g. after a refresh).
+pollTargetBatch();
 </script>
 
 </body>
