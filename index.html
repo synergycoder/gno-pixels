@@ -37,7 +37,7 @@
     background: var(--bg); border-bottom: 1px solid var(--border);
   }
   .site-header-inner {
-    max-width: 1700px; margin: 0 auto; padding: 0.85rem 1.25rem;
+    max-width: 1700px; margin: 0 auto; padding: 0.5rem 1.25rem;
     display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem;
   }
   /* The two 1fr tracks always split leftover space equally, regardless
@@ -54,8 +54,8 @@
   .header-nav-link:disabled { opacity: 0.5; cursor: default; }
   .header-nav-link:disabled:hover { color: var(--text-muted); }
   .site-header-center { grid-column: 2; text-align: right; }
-  .wallet-col { grid-column: 3; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
-  .network-note { font-size: 0.72rem; color: var(--text-muted); text-align: right; }
+  .wallet-col { grid-column: 3; justify-self: end; }
+  .network-note { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
   .network-note strong { color: var(--text); }
   .site-header h1 {
     font-family: "Press Start 2P", "Courier New", monospace;
@@ -63,7 +63,7 @@
     display: inline-block; cursor: pointer;
   }
   .title-icon { height: 1.88em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
-  .realm-link { display: block; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; margin-top: 0.2rem; }
+  .realm-link { display: inline-block; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; margin-left: 0.6rem; vertical-align: middle; }
   .realm-link:hover { color: var(--accent); text-decoration: underline; }
   .tagline { color: var(--text-muted); font-size: 0.95rem; margin: 0 0 1.5rem; text-align: center; }
 
@@ -177,7 +177,6 @@
   .community-toggle-count { color: var(--text-muted); font-weight: 400; }
   .community-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 60vh; overflow-y: auto; }
 
-  .board-toolbar { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
   /* A right-click's result used to only ever update coord-readout, right
      above the board -- fine at the top of the page, but scrolled or
      zoomed in deep enough that element is off-screen, so the "who
@@ -188,13 +187,15 @@
     border-radius: 8px; padding: 0.6rem 0.9rem; font-size: 0.82rem; font-family: ui-monospace, monospace;
     color: var(--text); box-shadow: 0 4px 16px rgba(0,0,0,0.4); pointer-events: none; max-width: 280px;
   }
-  .coord-readout { font-family: ui-monospace, monospace; font-size: 0.85rem; color: var(--text-muted); min-width: 12ch; text-align: center; }
+  .coord-readout { font-family: ui-monospace, monospace; font-size: 0.85rem; color: var(--text-muted); min-width: 12ch; text-align: center; margin-left: auto; }
   .zoom-controls { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); }
   .zoom-controls button {
-    width: 30px; height: 30px; padding: 0; border-radius: 6px; border: 1px solid var(--border);
-    background: none; color: var(--text); font-size: 1.1rem; font-weight: 700; cursor: pointer; font-family: inherit;
+    width: 34px; height: 34px; padding: 0; border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--bg-elevated); color: var(--text); font-size: 1.3rem; font-weight: 700; cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
   }
-  .zoom-controls button:hover { background: var(--border-soft); border-color: var(--accent); }
+  .zoom-controls button:hover { background: var(--border-soft); border-color: var(--accent); color: var(--accent); }
   .board-wrap {
     border: 1px solid var(--border); border-radius: 10px; width: 100%; max-height: 75vh; overflow: auto;
     background: var(--bg-elevated); cursor: grab; touch-action: none;
@@ -346,8 +347,8 @@
           <button class="disconnect-btn" id="disconnectBtn" type="button" title="Disconnect wallet">✕</button>
         </span>
         <a class="faucet-btn" id="faucetBtn" href="https://faucet.gno.land/" target="_blank" rel="noopener">🚰 Get testnet tokens</a>
+        <span class="network-note">⚠️ <strong>sapphire-1 testnet</strong> — not real funds</span>
       </div>
-      <div class="network-note">⚠️ You're on <strong>sapphire-1 testnet</strong> — not real funds</div>
     </div>
   </div>
   <p class="status" id="topStatus">Loading…</p>
@@ -386,9 +387,6 @@
 <p class="tagline">A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
 
 <div id="app" style="display:none">
-  <div class="board-toolbar">
-    <div class="coord-readout" id="coordReadout">Hover a cell, drag to pan, right-click to see who placed it</div>
-  </div>
   <div class="board-wrap" id="boardWrap"><div class="board" id="board"></div></div>
 
   <p class="status" id="placeStatus"></p>
@@ -564,6 +562,7 @@
       <button id="zoomIn" type="button" title="Zoom in">+</button>
     </div>
     <div class="palette-row" id="palette"></div>
+    <div class="coord-readout" id="coordReadout">Hover a cell, drag to pan, right-click to see who placed it</div>
   </div>
   <div class="footer-credit">Part of the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> project — an independent, community-built tool, not affiliated with the gno.land team. · <a href="#" id="footerSuggestionsLink">💡 Suggestions</a></div>
 </footer>
