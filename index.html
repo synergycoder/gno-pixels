@@ -224,7 +224,7 @@
   .swatch { width: 32px; height: 32px; border-radius: 7px; cursor: pointer; border: 2px solid var(--border); }
   .swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
 
-  .stats-row { display: flex; justify-content: center; align-items: center; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted); }
+  .stats-row { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted); }
   .stats-row b { color: var(--text); }
   .live-indicator { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
   .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: live-pulse 2s ease-in-out infinite; }
@@ -397,14 +397,6 @@
   <div class="board-wrap" id="boardWrap"><div class="board" id="board"></div></div>
 
   <p class="status" id="placeStatus"></p>
-
-  <div class="stats-row">
-    <span id="totalStat"></span>
-    <span id="occupiedStat"></span>
-    <span id="expansionsStat"></span>
-    <span id="cooldownStat"></span>
-    <span class="live-indicator" title="This board refreshes itself automatically"><span class="live-dot"></span>Live</span>
-  </div>
 </div>
 
 </div>
@@ -603,6 +595,13 @@
 
 <footer class="site-footer">
   <div class="control-bar" id="controlBar" style="display:none">
+    <div class="stats-row">
+      <span id="totalStat"></span>
+      <span id="occupiedStat"></span>
+      <span id="expansionsStat"></span>
+      <span id="cooldownStat"></span>
+      <span class="live-indicator" title="This board refreshes itself automatically"><span class="live-dot"></span>Live</span>
+    </div>
     <div class="zoom-controls">
       <button id="zoomOut" type="button" title="Zoom out">&minus;</button>
       <span id="zoomLabel">8px/cell</span>
@@ -620,7 +619,26 @@
 const NET = {
   chainId: "sapphire-1",
   rpcUrl: "https://rpc.sapphire.testnets.gno.land",
+  indexerUrl: "https://indexer.sapphire.testnets.gno.land/graphql/query",
 };
+
+async function indexerGraphqlQuery(query, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(NET.indexerUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      signal: controller.signal,
+    });
+    const json = await res.json();
+    if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
+    return json.data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 // Practice/scratch realm name -- deliberately NOT the final intended name,
 // so early iteration (redeploying while the design is still changing)
 // never collides with whatever the real, permanent realm ends up being
@@ -946,18 +964,18 @@ async function showPlacedBy(x, y, coordReadout, clientX, clientY) {
     positionOverlay(overlay, clientX, clientY);
     overlay.style.display = "";
   };
-  setText(`(${x}, ${y}) — checking…`);
+  setText(`x:${x} y:${y} — checking…`);
   try {
     const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + `.PlacedBy(${x},${y})`);
     const { addr, height } = parsePlacedBy(raw);
     setText(addr
-      ? `(${x}, ${y}) — placed by ${addr.slice(0, 6)}…${addr.slice(-4)} at height ${height}`
-      : `(${x}, ${y}) — not placed yet`);
+      ? `x:${x} y:${y} — placed by ${addr.slice(0, 6)}…${addr.slice(-4)} at height ${height}`
+      : `x:${x} y:${y} — not placed yet`);
   } catch (err) {
-    setText(`(${x}, ${y}) — lookup failed: ${err.message}`);
+    setText(`x:${x} y:${y} — lookup failed: ${err.message}`);
   }
   setTimeout(() => {
-    if (coordReadout.textContent.startsWith(`(${x}, ${y})`)) coordReadout.textContent = prevText;
+    if (coordReadout.textContent.startsWith(`x:${x} y:${y}`)) coordReadout.textContent = prevText;
     overlay.style.display = "none";
   }, 5000);
 }
@@ -973,8 +991,8 @@ function buildBoard(w, h) {
       const absX = originX + x, absY = originY + y;
       const cell = document.createElement("div");
       cell.className = "cell" + (targetMap().has(absX + "," + absY) ? " reserved-target" : "");
-      cell.title = `(${absX}, ${absY})`;
-      cell.addEventListener("mouseenter", () => { coordReadout.textContent = `(${absX}, ${absY})`; });
+      cell.title = `x:${absX} y:${absY}`;
+      cell.addEventListener("mouseenter", () => { coordReadout.textContent = `x:${absX} y:${absY}`; });
       cell.addEventListener("click", () => {
         if (wasDragGesture()) return;
         placePixel(absX, absY, selectedColor);
@@ -1085,35 +1103,76 @@ document.getElementById("helpPixelCount").addEventListener("keydown", (e) => {
 });
 
 // ---------- load + place ----------
-// Snapshot() does 16,384 individual grid.Get() calls (one per board
-// cell, painted or not) -- cheap while the grid was small, but it
-// started failing outright ("out of gas in location: CPUCycles",
-// confirmed live against the real realm) once occupiedCells grew large
-// enough, and only gets worse from here since the grid only grows.
-// Render()'s own canvas builder uses grid.Iterate() instead, which only
-// visits cells that actually EXIST in the tree (currently ~650, not
-// 16,384) -- reparsing the painted-cell data back out of its embedded
-// SVG stays cheap regardless of how full the board gets, and rebuilds
-// the exact dense-string shape the rest of this file already expects
-// from Snapshot(), so liveColorAt/paintSnapshot/drawCustomPreview don't
-// need to change at all.
-const RENDER_CELL_PX = 8; // must match canvasDataURI()'s own cellPx constant in the contract
+// Snapshot() (16,384 individual grid.Get() calls) started failing
+// outright ("out of gas in location: CPUCycles") once occupiedCells
+// grew large enough. Switched to Render()'s grid.Iterate()-based SVG
+// output as a fix -- cheaper, but STILL an on-chain read whose cost
+// scales with total occupied cells, and it broke the exact same way a
+// second time once the board grew further (confirmed live: Render("")
+// now also hits the query-time gas ceiling). Any full-board on-chain
+// read will eventually hit this wall as more people paint, no matter
+// how it's implemented -- so this reconstructs the board from the
+// sapphire-1 indexer's call history instead: replay every successful
+// SetPixel / SetPixels / ImportHistoricalPixel call in chronological
+// order (same last-write-wins semantics as the contract's own
+// recordPlacement, including colorIndex 0 = erase). Indexer reads are
+// plain database queries, not gas-metered chain computation, so this
+// doesn't get more expensive as the board grows -- it just returns
+// more rows, which is a solved problem (pagination), not a hard wall.
+const INDEXER_REPLAY_FUNCS = ["SetPixel", "SetPixels", "ImportHistoricalPixel"];
 
-function buildSnapshotFromRender(renderRaw, w, h, minX, minY) {
+function boardCallsQuery(func) {
+  return `query {
+    getTransactions(
+      where: {
+        success: { eq: true },
+        messages: { value: { MsgCall: { pkg_path: { eq: "${PIXEL_REALM_PATH}" }, func: { eq: "${func}" } } } }
+      },
+      order: { heightAndIndex: ASC }
+    ) {
+      block_height
+      index
+      messages { value { ... on MsgCall { func args } } }
+    }
+  }`;
+}
+
+function applyPixelWrite(dense, w, h, minX, minY, x, y, colorIndex) {
+  const idx = (y - minY) * w + (x - minX);
+  if (idx < 0 || idx >= dense.length) return; // outside current bounds (board has since expanded) -- ignore
+  dense[idx] = colorIndex === 0 ? "0" : String(colorIndex);
+}
+
+async function buildSnapshotFromIndexer(w, h, minX, minY) {
   const dense = new Array(w * h).fill("0");
-  const md = parseGnoEvalString(renderRaw) || "";
-  const svgMatch = /data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)/.exec(md);
-  if (!svgMatch) return dense.join("");
-  const svg = decodeURIComponent(escape(atob(svgMatch[1])));
-  const rectRe = /<rect x="(-?\d+)" y="(-?\d+)"[^>]*fill="(#[0-9a-fA-F]{6})"/g;
-  let m;
-  while ((m = rectRe.exec(svg))) {
-    const colorIndex = paletteColors.findIndex((c) => c.toLowerCase() === m[3].toLowerCase());
-    if (colorIndex < 0) continue;
-    const cellX = minX + Math.round(Number(m[1]) / RENDER_CELL_PX);
-    const cellY = minY + Math.round(Number(m[2]) / RENDER_CELL_PX);
-    const idx = (cellY - minY) * w + (cellX - minX);
-    if (idx >= 0 && idx < dense.length) dense[idx] = String(colorIndex);
+  const results = await Promise.all(
+    INDEXER_REPLAY_FUNCS.map((func) => indexerGraphqlQuery(boardCallsQuery(func)))
+  );
+  const calls = [];
+  for (const data of results) {
+    for (const tx of data.getTransactions) {
+      const msg = (tx.messages || [])[0];
+      if (!msg || !msg.value) continue;
+      calls.push({ height: tx.block_height, index: tx.index, func: msg.value.func, args: msg.value.args });
+    }
+  }
+  // heightAndIndex ASC already orders each func's own results correctly,
+  // but the three lists still need interleaving with each other.
+  calls.sort((a, b) => a.height - b.height || a.index - b.index);
+  for (const call of calls) {
+    if (call.func === "SetPixel") {
+      const [x, y, c] = call.args.map(Number);
+      applyPixelWrite(dense, w, h, minX, minY, x, y, c);
+    } else if (call.func === "SetPixels") {
+      const entries = (call.args[0] || "").split(";").filter(Boolean);
+      for (const entry of entries) {
+        const [x, y, c] = entry.split(",").map(Number);
+        applyPixelWrite(dense, w, h, minX, minY, x, y, c);
+      }
+    } else if (call.func === "ImportHistoricalPixel") {
+      const [x, y, c] = call.args.slice(0, 3).map(Number);
+      applyPixelWrite(dense, w, h, minX, minY, x, y, c);
+    }
   }
   return dense.join("");
 }
@@ -1129,15 +1188,14 @@ async function loadCanvas() {
     originX = minX; originY = minY;
     const w = maxX - minX + 1, h = maxY - minY + 1;
 
-    const [renderRaw, paletteRaw, totalRaw, occupiedRaw, expansionsRaw] = await Promise.all([
-      abciQuery("vm/qeval", PIXEL_REALM_PATH + '.Render("")'),
+    const [paletteRaw, totalRaw, occupiedRaw, expansionsRaw] = await Promise.all([
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".PaletteCSV()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".TotalPlacements()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".OccupiedCells()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ExpansionsCount()"),
     ]);
     paletteColors = (parseGnoEvalString(paletteRaw) || "").split(",").filter(Boolean);
-    lastSnapshotStr = buildSnapshotFromRender(renderRaw, w, h, minX, minY);
+    lastSnapshotStr = await buildSnapshotFromIndexer(w, h, minX, minY);
 
     deployedOnChain = true;
     statusEl.style.display = "none";
@@ -2461,25 +2519,6 @@ document.getElementById("aboutModalBackdrop").addEventListener("click", (e) => {
 const SUGGESTIONS_ADDRESS = "g1hxsz6mnhjx2n75xr2vpe6tytdk8jj4p49gcsug";
 const SUGGEST_MEMO_PREFIX = "gnopx:suggest:";
 const SUGGESTION_SEND_AMOUNT = "1ugnot";
-const SUGGESTIONS_INDEXER_URL = "https://indexer.sapphire.testnets.gno.land/graphql/query";
-
-async function suggestionsGraphqlQuery(query, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(SUGGESTIONS_INDEXER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
-    return json.data;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 async function loadSuggestions() {
   const statusEl = document.getElementById("suggestionsStatus");
@@ -2500,7 +2539,7 @@ async function loadSuggestions() {
         messages { value { ... on BankMsgSend { from_address to_address } } }
       }
     }`;
-    const data = await suggestionsGraphqlQuery(query);
+    const data = await indexerGraphqlQuery(query);
     const txs = data.getTransactions || [];
     const rows = [];
     for (const tx of txs) {
