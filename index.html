@@ -1676,24 +1676,68 @@ function buildCustomDrawPalette() {
   el.appendChild(eraser);
 }
 
-function paintDrawCell(i, cell) {
-  customDrawGridData[i] = customDrawColor;
-  cell.style.backgroundColor = customDrawColor === null ? "" : paletteColors[customDrawColor];
+function paintDrawCell(i, cell, colorOverride) {
+  const color = colorOverride !== undefined ? colorOverride : customDrawColor;
+  customDrawGridData[i] = color;
+  cell.style.backgroundColor = color === null ? "" : paletteColors[color];
   updateDrawTrace();
 }
 
-function buildDrawGrid() {
+// Right-click paints black directly, skipping the swatch row -- a quick
+// shortcut for outlines/shading without breaking your actual selected
+// color. drawPaintColor is fixed for the whole drag (set once on
+// mousedown), so dragging across cells with the button held keeps using
+// whichever color that particular drag started with.
+let drawPaintColor = null;
+
+function makeDrawCell(i) {
+  const cell = document.createElement("div");
+  cell.className = "draw-cell";
+  const v = customDrawGridData[i];
+  if (v !== null && v !== undefined) cell.style.backgroundColor = paletteColors[v];
+  cell.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    drawPainting = true;
+    drawPaintColor = e.button === 2 ? 0 : customDrawColor;
+    paintDrawCell(i, cell, drawPaintColor);
+  });
+  cell.addEventListener("mouseenter", () => { if (drawPainting) paintDrawCell(i, cell, drawPaintColor); });
+  cell.addEventListener("contextmenu", (e) => e.preventDefault());
+  return cell;
+}
+
+function renderDrawGridDom() {
   const el = document.getElementById("customDrawGrid");
   el.innerHTML = "";
   el.style.gridTemplateColumns = `repeat(${customDrawW}, 14px)`;
+  for (let i = 0; i < customDrawGridData.length; i++) el.appendChild(makeDrawCell(i));
+}
+
+// Fresh, blank grid at the current size -- used for switching into draw
+// mode and the explicit "Clear all" button, both real "start over"
+// actions. Dragging the width/height sliders must NOT go through this:
+// see resizeDrawGrid below.
+function buildDrawGrid() {
   customDrawGridData = new Array(customDrawW * customDrawH).fill(null);
-  for (let i = 0; i < customDrawGridData.length; i++) {
-    const cell = document.createElement("div");
-    cell.className = "draw-cell";
-    cell.addEventListener("mousedown", (e) => { e.preventDefault(); drawPainting = true; paintDrawCell(i, cell); });
-    cell.addEventListener("mouseenter", () => { if (drawPainting) paintDrawCell(i, cell); });
-    el.appendChild(cell);
+  renderDrawGridDom();
+}
+
+// Resizing used to rebuild the grid via buildDrawGrid(), silently
+// wiping every painted cell back to blank on every slider drag --
+// reported as "changing width/height deletes my work". This instead
+// carries over whatever still fits inside the new bounds, only the
+// newly-added rows/columns (or cells trimmed off by shrinking) change.
+function resizeDrawGrid(newW, newH) {
+  const oldW = customDrawW, oldH = customDrawH, oldData = customDrawGridData;
+  customDrawW = newW;
+  customDrawH = newH;
+  const next = new Array(newW * newH).fill(null);
+  const copyW = Math.min(oldW, newW), copyH = Math.min(oldH, newH);
+  for (let y = 0; y < copyH; y++) {
+    for (let x = 0; x < copyW; x++) next[y * newW + x] = oldData[y * oldW + x];
   }
+  customDrawGridData = next;
+  renderDrawGridDom();
 }
 document.addEventListener("mouseup", () => { drawPainting = false; });
 
@@ -1716,15 +1760,13 @@ function updateDrawTrace() {
 }
 
 document.getElementById("customDrawWidthSlider").addEventListener("input", (e) => {
-  customDrawW = Number(e.target.value);
-  document.getElementById("customDrawWidthLabel").textContent = customDrawW;
-  buildDrawGrid();
+  document.getElementById("customDrawWidthLabel").textContent = e.target.value;
+  resizeDrawGrid(Number(e.target.value), customDrawH);
   updateDrawTrace();
 });
 document.getElementById("customDrawHeightSlider").addEventListener("input", (e) => {
-  customDrawH = Number(e.target.value);
-  document.getElementById("customDrawHeightLabel").textContent = customDrawH;
-  buildDrawGrid();
+  document.getElementById("customDrawHeightLabel").textContent = e.target.value;
+  resizeDrawGrid(customDrawW, Number(e.target.value));
   updateDrawTrace();
 });
 document.getElementById("customDrawClearBtn").addEventListener("click", () => {
