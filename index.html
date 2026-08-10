@@ -159,6 +159,14 @@
     border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); pointer-events: none; background: #000;
   }
 
+  .side-cta-btn {
+    width: 100%; padding: 0.65rem 0.9rem; border-radius: 8px; border: 1px dashed var(--border);
+    background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 700;
+  }
+  .side-cta-btn:hover { background: var(--border-soft); border-color: var(--accent); }
+  .side-cta-btn:disabled { opacity: 0.5; cursor: default; }
+  .side-cta-btn:disabled:hover { background: none; border-color: var(--border); }
+
   .community-toggle-btn {
     width: 100%; padding: 0.55rem 0.75rem; border-radius: 8px; border: 1px dashed var(--border);
     background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.82rem; font-weight: 600;
@@ -304,6 +312,13 @@
   }
   .tab-btn.active { border-color: var(--accent); color: var(--text); background: rgba(108,92,231,0.12); }
   #customTextInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.95rem; resize: vertical; }
+  #suggestionInput { width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.9rem; resize: vertical; }
+  .suggestion-card {
+    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.8rem 1rem; margin: 0 0 0.7rem; font-size: 0.87rem;
+  }
+  .suggestion-card:last-child { margin-bottom: 0; }
+  .suggestion-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.4rem; }
   #customDesignName { width: 100%; padding: 0.5rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.9rem; }
 
 </style>
@@ -314,8 +329,8 @@
   <div class="site-header-inner">
     <div class="site-header-left">
       <button type="button" class="header-nav-link" id="navAbout" title="What is GNO Pixels? Click to open.">ℹ️ About</button>
-      <button type="button" class="header-nav-link" id="navCustomCanvas" title="Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (free if it happens to match the official design). Click to open." disabled>🖼️ Your own canvas</button>
       <button type="button" class="header-nav-link" id="navLeaderboard" title="See who's placed the most pixels on the board. Click to open.">🏆 Top contributors</button>
+      <button type="button" class="header-nav-link" id="navSuggestions" title="Suggest a feature or change. Click to open.">💡 Suggestions</button>
     </div>
     <div class="site-header-center">
       <h1 id="titleHome" title="Back to center"><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
@@ -354,8 +369,10 @@
     <p class="status" id="helpStatus"></p>
   </div>
 
+  <button type="button" class="side-cta-btn" id="navCustomCanvas" title="Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (free if it happens to match the official design). Click to open." disabled>🖼️ Create your own canvas</button>
+
   <button type="button" class="community-toggle-btn" id="communityToggleBtn" style="display:none">
-    <span id="communityToggleLabel">Show community art</span>
+    <span id="communityToggleLabel">Hide completed</span>
     <span class="community-toggle-count" id="communityToggleCount"></span>
   </button>
   <div class="community-list" id="communityDesignsList" style="display:none"></div>
@@ -516,6 +533,25 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="suggestionsModalBackdrop" style="display:none">
+  <div class="modal" id="suggestionsModal">
+    <button class="modal-close" id="suggestionsModalClose" type="button" title="Close">✕</button>
+    <h2>💡 Suggestions</h2>
+    <p class="modal-hint">Real signed transactions — a tiny memo-tagged send through your own Adena wallet on sapphire-1. Nothing is stored on this site; the list below is read directly from chain history every time you open this.</p>
+
+    <textarea id="suggestionInput" placeholder="Suggest a feature or change…" maxlength="200" rows="3"></textarea>
+    <div class="field-row" style="display:flex; justify-content:space-between; align-items:center; margin:0.6rem 0;">
+      <span id="suggestionCharCount" class="status" style="margin:0">0 / 200</span>
+      <button type="button" class="primary-btn" id="sendSuggestionBtn">Send suggestion</button>
+    </div>
+    <p class="status" id="suggestionSendStatus"></p>
+
+    <h3 style="font-size:0.95rem; margin:1.25rem 0 0.5rem;">Existing suggestions</h3>
+    <p class="status" id="suggestionsStatus">Loading…</p>
+    <div id="suggestionsList"></div>
+  </div>
+</div>
+
 <footer class="site-footer">
   <div class="control-bar" id="controlBar" style="display:none">
     <div class="zoom-controls">
@@ -525,7 +561,7 @@
     </div>
     <div class="palette-row" id="palette"></div>
   </div>
-  <div class="footer-credit">Part of the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> project — an independent, community-built tool, not affiliated with the gno.land team.</div>
+  <div class="footer-credit">Part of the <a href="https://gno.observer" target="_blank" rel="noopener">Gno.Observer</a> project — an independent, community-built tool, not affiliated with the gno.land team. · <a href="#" id="footerSuggestionsLink">💡 Suggestions</a></div>
 </footer>
 
 <script src="target_pattern.js"></script>
@@ -777,7 +813,11 @@ document.getElementById("disconnectBtn").addEventListener("click", () => {
 // ---------- board state ----------
 let gridWidth = 0, gridHeight = 0, originX = 0, originY = 0;
 let paletteColors = [];
-let selectedColor = 0;
+// Never defaults to 0 (black) -- SetPixel(x, y, 0) erases the cell
+// rather than painting it (recordPlacement calls grid.Remove), so a
+// visitor who clicked before ever touching the palette would pay a
+// real fee for a transaction that visibly does nothing.
+let selectedColor = 1;
 const cellEls = [];
 let loadInFlight = false;
 let placeInFlight = false;
@@ -934,11 +974,11 @@ function liveColorAt(x, y) {
   return Number(lastSnapshotStr[idx]);
 }
 
-// Real live render of the target pattern instead of the generic gnome
-// icon -- matched cells show their real placed color, everything else
-// (not yet placed) stays background/black, so the thumbnail visibly
-// fills in over time exactly like the community-design thumbnails show
-// their own designs, rather than a static logo that never changes.
+// The full intended design, same as community-design thumbnails show
+// THEIR full design regardless of placement progress -- not a "live
+// progress" render. Consistent expectation: a thumbnail always shows
+// what the finished piece looks like; the progress bar/text next to it
+// already communicates how much of that is actually placed so far.
 function drawOfficialThumbnail() {
   const canvas = document.getElementById("officialMiniThumb");
   if (!canvas || !TARGET_PATTERN.length || !paletteColors.length) return;
@@ -953,7 +993,6 @@ function drawOfficialThumbnail() {
   const offX = (box - width * scale) / 2;
   const offY = (box - height * scale) / 2;
   for (const [x, y, c] of TARGET_PATTERN) {
-    if (liveColorAt(x, y) !== c) continue; // not placed (or wrong color) yet -- leave as background
     ctx.fillStyle = paletteColors[c] || "#fff";
     ctx.fillRect(offX + (x - minX) * scale, offY + (y - minY) * scale, Math.max(1, scale), Math.max(1, scale));
   }
@@ -1055,8 +1094,18 @@ async function loadCanvas() {
 
 async function placePixel(x, y, colorIndex, statusElOverride) {
   if (placeInFlight) return;
-  const boardEl = document.getElementById("board");
   const statusEl = statusElOverride || document.getElementById("placeStatus");
+  // Black on a cell that's already empty is a genuine no-op on this
+  // contract (SetPixel(x,y,0) erases, and an untouched cell already
+  // reads as black) -- catches the direct click-a-cell flow specifically,
+  // since the "help place" flows already filter these out of their own
+  // pending lists before ever calling this. No connect, no transaction,
+  // no fee for something that would change nothing.
+  if (isRedundantBlackPlacement(x, y, colorIndex)) {
+    statusEl.textContent = `(${x}, ${y}) is already empty — nothing to place.`;
+    return;
+  }
+  const boardEl = document.getElementById("board");
   placeInFlight = true;
   boardEl.classList.add("busy");
   statusEl.textContent = `Connecting to Adena to place (${x}, ${y})…`;
@@ -1279,7 +1328,6 @@ async function loadCustomCanvasConfig() {
 
 // ---------- community designs (submitted via the modal above) ----------
 async function loadCommunityDesigns() {
-  const section = document.getElementById("communityDesignsSection");
   const toggleBtn = document.getElementById("communityToggleBtn");
   const list = document.getElementById("communityDesignsList");
   if (!feesSupported) { toggleBtn.style.display = "none"; list.style.display = "none"; return; }
@@ -1297,8 +1345,7 @@ async function loadCommunityDesigns() {
       const pixels = encoded ? encoded.split(";").map((e) => e.split(",").map(Number)) : [];
       return { ...r, pixels };
     }));
-    toggleBtn.style.display = "";
-    document.getElementById("communityToggleCount").textContent = `(${designs.length})`;
+    list.style.display = "";
     renderCommunityDesigns(designs);
   } catch {
     toggleBtn.style.display = "none";
@@ -1350,7 +1397,7 @@ function drawMiniThumbnail(canvas, pixels) {
 
 let communityPendingById = {};
 let communityDesignsById = {};
-let communityListExpanded = false;
+let hideCompletedCommunity = false;
 
 // Hover-to-zoom for a thumbnail too small to make out clearly -- no
 // click, appears on mouseenter, gone on mouseleave. Reuses boundsOf()
@@ -1393,13 +1440,14 @@ function hideThumbHoverPreview() {
 }
 
 document.getElementById("officialMiniThumb").addEventListener("mouseenter", (e) => {
-  showPixelsHoverPreview(TARGET_PATTERN.filter(([x, y, c]) => liveColorAt(x, y) === c), e);
+  showPixelsHoverPreview(TARGET_PATTERN, e);
 });
 document.getElementById("officialMiniThumb").addEventListener("mousemove", positionThumbHoverPreview);
 document.getElementById("officialMiniThumb").addEventListener("mouseleave", hideThumbHoverPreview);
 
+let lastCommunityWithProgress = [];
+
 function renderCommunityDesigns(designs) {
-  const list = document.getElementById("communityDesignsList");
   const withProgress = designs.map((d) => {
     const pending = d.pixels.filter(([x, y, c]) => liveColorAt(x, y) !== c);
     return { ...d, pending, done: d.pixels.length - pending.length };
@@ -1411,8 +1459,29 @@ function renderCommunityDesigns(designs) {
     if (aDone !== bDone) return aDone ? 1 : -1;
     return a.done / (a.pixels.length || 1) - b.done / (b.pixels.length || 1);
   });
+  lastCommunityWithProgress = withProgress;
+  renderCommunityListDom();
+}
 
-  list.innerHTML = withProgress.map((d) => {
+// Split from renderCommunityDesigns() so toggling "hide completed" just
+// re-filters the already-fetched data instead of re-querying chain --
+// the list itself is always visible now (finished designs are filtered
+// OUT of it, not the whole panel collapsed).
+function renderCommunityListDom() {
+  const list = document.getElementById("communityDesignsList");
+  const toggleBtn = document.getElementById("communityToggleBtn");
+  const completed = lastCommunityWithProgress.filter((d) => d.pending.length === 0);
+  const visible = hideCompletedCommunity ? lastCommunityWithProgress.filter((d) => d.pending.length > 0) : lastCommunityWithProgress;
+
+  if (completed.length === 0) {
+    toggleBtn.style.display = "none";
+  } else {
+    toggleBtn.style.display = "";
+    document.getElementById("communityToggleLabel").textContent = hideCompletedCommunity ? "Show completed" : "Hide completed";
+    document.getElementById("communityToggleCount").textContent = `(${completed.length})`;
+  }
+
+  list.innerHTML = visible.map((d) => {
     communityPendingById[d.id] = d.pending;
     communityDesignsById[d.id] = d;
     const pct = d.pixels.length ? Math.round((d.done / d.pixels.length) * 100) : 0;
@@ -1435,7 +1504,7 @@ function renderCommunityDesigns(designs) {
   }).join("");
 
   list.querySelectorAll("canvas[data-thumb-id]").forEach((canvas) => {
-    const d = withProgress.find((x) => x.id === canvas.dataset.thumbId);
+    const d = visible.find((x) => x.id === canvas.dataset.thumbId);
     if (!d) return;
     drawMiniThumbnail(canvas, d.pixels);
     canvas.addEventListener("mouseenter", (e) => showThumbHoverPreview(canvas.dataset.thumbId, e));
@@ -1460,12 +1529,10 @@ function renderCommunityDesigns(designs) {
   });
 }
 
-function setCommunityListExpanded(expanded) {
-  communityListExpanded = expanded;
-  document.getElementById("communityDesignsList").style.display = expanded ? "" : "none";
-  document.getElementById("communityToggleLabel").textContent = expanded ? "Hide community art" : "Show community art";
-}
-document.getElementById("communityToggleBtn").addEventListener("click", () => setCommunityListExpanded(!communityListExpanded));
+document.getElementById("communityToggleBtn").addEventListener("click", () => {
+  hideCompletedCommunity = !hideCompletedCommunity;
+  renderCommunityListDom();
+});
 
 function hexToRgb(hex) {
   const v = parseInt(hex.slice(1), 16);
@@ -1550,25 +1617,23 @@ function updateTraceCostEstimate() {
 // it silently inflated a design's "done" count the moment it was
 // submitted (matched the empty board immediately, with nobody actually
 // placing anything) -- reported as "I just submitted this and it
-// already shows progress I didn't make". Stripped here, at the one
-// place both image and text tracing funnel through, plus separately in
-// free draw below.
-function excludeUnplaceableBlack(pixels) {
-  const kept = pixels.filter((p) => p.c !== 0);
-  return { pixels: kept, excludedCount: pixels.length - kept.length };
-}
-
+// Black (colorIndex 0) is legitimate design content -- e.g. "cut a hole
+// back to background" over whatever's currently painted there -- so it
+// stays in the traced/drawn pixel set. Whether a given black pixel
+// actually costs anything can only be known once the design is
+// POSITIONED (step 2), by checking what's really on the board at that
+// exact spot: still-empty there means the placement is a genuine no-op
+// (free, and skipped from what's actually submitted), already-painted
+// there means it's a real erase (priced like any other placement). See
+// classifyPixelForPlacement() in step 2.
 function applyTrace(result) {
-  const { pixels, excludedCount } = excludeUnplaceableBlack(result.pixels);
-  customTracedPixels = pixels;
+  customTracedPixels = result.pixels;
   customTraceWidth = result.width;
   customTraceHeight = result.height;
   drawTracePreview();
-  document.getElementById("customTraceStatus").textContent =
-    `${pixels.length} pixels traced (${result.width}×${result.height}).` +
-    (excludedCount ? ` (${excludedCount} black pixel(s) skipped — black can't be placed distinctly from empty on this board.)` : "");
+  document.getElementById("customTraceStatus").textContent = `${result.pixels.length} pixels traced (${result.width}×${result.height}).`;
   updateTraceCostEstimate();
-  document.getElementById("customAddLayerBtn").disabled = pixels.length === 0;
+  document.getElementById("customAddLayerBtn").disabled = result.pixels.length === 0;
   updateNextButtonState();
 }
 
@@ -1861,25 +1926,18 @@ function resizeDrawGrid(newW, newH) {
 document.addEventListener("mouseup", () => { drawPainting = false; });
 
 function updateDrawTrace() {
-  const rawPixels = [];
+  const pixels = [];
   for (let y = 0; y < customDrawH; y++) {
     for (let x = 0; x < customDrawW; x++) {
       const c = customDrawGridData[y * customDrawW + x];
       if (c === null || c === undefined) continue;
-      rawPixels.push({ dx: x, dy: y, c });
+      pixels.push({ dx: x, dy: y, c });
     }
   }
-  // Black stays visible on the editing grid itself (customDrawGridData
-  // is untouched) so what you painted still looks right while you work
-  // -- only excluded from what actually gets traced/submitted, same
-  // reasoning as excludeUnplaceableBlack() for image/text.
-  const { pixels, excludedCount } = excludeUnplaceableBlack(rawPixels);
   customTracedPixels = pixels;
   customTraceWidth = customDrawW;
   customTraceHeight = customDrawH;
-  document.getElementById("customTraceStatus").textContent =
-    `${pixels.length} pixels drawn (${customDrawW}×${customDrawH}).` +
-    (excludedCount ? ` (${excludedCount} black pixel(s) won't be placeable — treated as empty on this board.)` : "");
+  document.getElementById("customTraceStatus").textContent = `${pixels.length} pixels drawn (${customDrawW}×${customDrawH}).`;
   updateTraceCostEstimate();
   document.getElementById("customAddLayerBtn").disabled = pixels.length === 0;
   updateNextButtonState();
@@ -1984,11 +2042,24 @@ function drawCustomPreview() {
 // can help fill it in afterward via the community-designs list, paying
 // per pixel as they personally place it. This summary is a preview of
 // what it'll cost the COMMUNITY to finish, not a bill for the submitter.
+// Black (colorIndex 0) is only ever a real, meaningful placement when
+// it CHANGES something -- i.e. the live board cell isn't already
+// empty/black. Since an untouched cell already reads as black too,
+// "black over an already-empty cell" can never be distinguished from
+// "never placed" once it's on chain -- sending it accomplishes nothing
+// but still costs real gas/fee, so it's excluded entirely here rather
+// than priced. Black over a cell that DOES have something else placed
+// is a real erase and prices exactly like any other placement.
+function isRedundantBlackPlacement(x, y, c) {
+  return c === 0 && liveColorAt(x, y) === 0;
+}
+
 function updateCustomCost() {
-  let free = 0, normal = 0, vandal = 0, outOfBounds = 0;
+  let free = 0, normal = 0, vandal = 0, outOfBounds = 0, redundant = 0;
   for (const p of customTracedPixels) {
     const x = customOrigin.x + p.dx, y = customOrigin.y + p.dy;
     if (x < originX || x >= originX + gridWidth || y < originY || y >= originY + gridHeight) { outOfBounds++; continue; }
+    if (isRedundantBlackPlacement(x, y, p.c)) { redundant++; continue; }
     const fee = pixelFeeLocal(x, y, p.c);
     if (fee === 0) free++;
     else if (fee === customVandalismFee) vandal++;
@@ -1998,6 +2069,7 @@ function updateCustomCost() {
   let html =
     `${customTracedPixels.length} pixels — ${free} already match the official design (free), ${normal} at ${formatGnot(customFeePerPixel)} each` +
     (vandal ? `, ${vandal} ⚠️ overwrite official cells at ${formatGnot(customVandalismFee)} each` : "") +
+    (redundant ? `, ${redundant} black pixel(s) over already-empty cells (skipped — no real change, no cost)` : "") +
     `<br><b>~${formatGnot(totalUgnot)} total</b> to fill it in completely — shared across everyone who helps, not paid by you now.` +
     `<br>Submitting just registers the design (a small gas/storage fee), same as any other transaction.`;
   if (outOfBounds > 0) html += `<br><span class="custom-warning">${outOfBounds} pixel(s) fall outside the board — move your design.</span>`;
@@ -2067,7 +2139,13 @@ document.getElementById("customSubmitBtn").addEventListener("click", async () =>
   try {
     const address = await ensureAdenaConnected();
     applyConnectedUI(address);
-    const encoded = customTracedPixels.map((p) => `${customOrigin.x + p.dx},${customOrigin.y + p.dy},${p.c}`).join(";");
+    // Redundant black pixels (already-empty cells) are dropped here too --
+    // no point spending storage deposit registering a design pixel that
+    // can never be distinguished from "not part of the design" once it's
+    // on chain, since it matches the board's default state either way.
+    const encoded = customTracedPixels
+      .filter((p) => !isRedundantBlackPlacement(customOrigin.x + p.dx, customOrigin.y + p.dy, p.c))
+      .map((p) => `${customOrigin.x + p.dx},${customOrigin.y + p.dy},${p.c}`).join(";");
     statusEl.textContent = "Submitting design…";
     const res = await window.adena.DoContract({
       messages: [{
@@ -2127,6 +2205,140 @@ document.getElementById("navAbout").addEventListener("click", openAboutModal);
 document.getElementById("aboutModalClose").addEventListener("click", closeAboutModal);
 document.getElementById("aboutModalBackdrop").addEventListener("click", (e) => {
   if (e.target.id === "aboutModalBackdrop") closeAboutModal();
+});
+
+// ---------- suggestions ----------
+//
+// Same mechanism gno.observer already uses for its own suggestions:
+// a real signed transaction, a tiny (1ugnot) bank send with the actual
+// suggestion text in the memo, to a shared collector address. Reusing
+// THAT SAME address (so it's one place to review feedback from every
+// project) but with a project-specific memo prefix, so this list only
+// ever shows gno-pixels suggestions -- gno.observer's own memo prefix
+// is different, and each site's query only matches its own prefix.
+const SUGGESTIONS_ADDRESS = "g1hxsz6mnhjx2n75xr2vpe6tytdk8jj4p49gcsug";
+const SUGGEST_MEMO_PREFIX = "gnopx:suggest:";
+const SUGGESTION_SEND_AMOUNT = "1ugnot";
+const SUGGESTIONS_INDEXER_URL = "https://indexer.sapphire.testnets.gno.land/graphql/query";
+
+async function suggestionsGraphqlQuery(query, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(SUGGESTIONS_INDEXER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      signal: controller.signal,
+    });
+    const json = await res.json();
+    if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
+    return json.data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadSuggestions() {
+  const statusEl = document.getElementById("suggestionsStatus");
+  const listEl = document.getElementById("suggestionsList");
+  statusEl.textContent = "Loading…";
+  try {
+    // The indexer's `like` filtering isn't reliable, so (same approach
+    // gno.observer's own suggestions use) fetch every send to the
+    // collector address and filter by memo prefix client-side instead.
+    const query = `query {
+      getTransactions(where: {
+        success: { eq: true },
+        messages: { value: { BankMsgSend: { to_address: { eq: "${SUGGESTIONS_ADDRESS}" } } } }
+      }) {
+        hash
+        block_height
+        memo
+        messages { value { ... on BankMsgSend { from_address to_address } } }
+      }
+    }`;
+    const data = await suggestionsGraphqlQuery(query);
+    const txs = data.getTransactions || [];
+    const rows = [];
+    for (const tx of txs) {
+      const memo = tx.memo || "";
+      if (!memo.startsWith(SUGGEST_MEMO_PREFIX)) continue;
+      const msg = (tx.messages || [])[0];
+      const from = msg && msg.value && msg.value.from_address;
+      const text = memo.slice(SUGGEST_MEMO_PREFIX.length).trim();
+      if (!from || !text) continue;
+      rows.push({ hash: tx.hash, text, from, blockHeight: tx.block_height });
+    }
+    rows.sort((a, b) => b.blockHeight - a.blockHeight); // newest first
+    if (!rows.length) {
+      statusEl.textContent = "No suggestions yet — be the first.";
+      listEl.innerHTML = "";
+      return;
+    }
+    statusEl.textContent = `${rows.length} suggestion(s).`;
+    listEl.innerHTML = rows.map((r) => `
+      <div class="suggestion-card">
+        <div>${escapeHtml(r.text)}</div>
+        <div class="suggestion-meta">by ${r.from.slice(0, 6)}…${r.from.slice(-4)} · block ${r.blockHeight}</div>
+      </div>
+    `).join("");
+  } catch (err) {
+    statusEl.textContent = "Couldn't load suggestions: " + err.message;
+  }
+}
+
+document.getElementById("suggestionInput").addEventListener("input", (e) => {
+  document.getElementById("suggestionCharCount").textContent = `${e.target.value.length} / 200`;
+});
+
+document.getElementById("sendSuggestionBtn").addEventListener("click", async () => {
+  const input = document.getElementById("suggestionInput");
+  const statusEl = document.getElementById("suggestionSendStatus");
+  const text = input.value.trim();
+  if (!text) { statusEl.textContent = "Type something first."; return; }
+  const btn = document.getElementById("sendSuggestionBtn");
+  btn.disabled = true;
+  statusEl.textContent = "Connecting to Adena…";
+  try {
+    const address = await ensureAdenaConnected();
+    applyConnectedUI(address);
+    statusEl.textContent = "Sending suggestion…";
+    const res = await window.adena.DoContract({
+      messages: [{
+        type: "/bank.MsgSend",
+        value: { from_address: address, to_address: SUGGESTIONS_ADDRESS, amount: SUGGESTION_SEND_AMOUNT },
+      }],
+      memo: SUGGEST_MEMO_PREFIX + text,
+      networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
+    });
+    if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
+    statusEl.textContent = "Sent! Refreshing the list…";
+    input.value = "";
+    document.getElementById("suggestionCharCount").textContent = "0 / 200";
+    setTimeout(loadSuggestions, 4000);
+  } catch (err) {
+    statusEl.textContent = "Failed: " + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function openSuggestionsModal() {
+  document.getElementById("suggestionsModalBackdrop").style.display = "";
+  loadSuggestions();
+}
+function closeSuggestionsModal() {
+  document.getElementById("suggestionsModalBackdrop").style.display = "none";
+}
+document.getElementById("navSuggestions").addEventListener("click", openSuggestionsModal);
+document.getElementById("footerSuggestionsLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  openSuggestionsModal();
+});
+document.getElementById("suggestionsModalClose").addEventListener("click", closeSuggestionsModal);
+document.getElementById("suggestionsModalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "suggestionsModalBackdrop") closeSuggestionsModal();
 });
 
 document.getElementById("titleHome").addEventListener("click", () => {
