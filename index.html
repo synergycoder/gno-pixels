@@ -37,14 +37,22 @@
     background: var(--bg); border-bottom: 1px solid var(--border);
   }
   .site-header-inner {
-    max-width: 1500px; margin: 0 auto; padding: 0.85rem 1.25rem;
+    max-width: 1700px; margin: 0 auto; padding: 0.85rem 1.25rem;
     display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem;
   }
   /* The two 1fr tracks always split leftover space equally, regardless
      of what's in the right-hand wallet-bar -- that's what keeps the
      center column truly centered on screen rather than just centered
      within the leftover space next to the wallet bar. */
-  .site-header-spacer { min-width: 0; }
+  .site-header-left { min-width: 0; display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+  .header-nav-link {
+    background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--text-muted);
+    display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap;
+  }
+  .header-nav-link:hover { color: var(--accent); }
+  .header-nav-link:disabled { opacity: 0.5; cursor: default; }
+  .header-nav-link:disabled:hover { color: var(--text-muted); }
   .site-header-center { grid-column: 2; text-align: right; }
   .wallet-col { grid-column: 3; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
   .network-note { font-size: 0.72rem; color: var(--text-muted); text-align: right; }
@@ -66,20 +74,8 @@
   }
   .site-footer a { color: var(--accent); }
 
-  .layout {
-    display: flex; justify-content: center; align-items: flex-start; gap: 1.75rem;
-    max-width: 1500px; margin: 0 auto; padding: 2rem 1.25rem 3rem;
-  }
-  .page { flex: 0 1 900px; min-width: 0; max-width: 900px; }
-  .sidebar {
-    display: none; flex: 0 0 260px; width: 260px;
-    position: sticky; top: 4.5rem;
-  }
-  @media (min-width: 1550px) { .sidebar { display: block; } }
-  .sidebar h2 { font-size: 0.95rem; margin: 0 0 0.9rem; }
-  .sidebar-card {
-    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
-    padding: 1.25rem;
+  .page {
+    max-width: 1700px; width: 100%; margin: 0 auto; padding: 2rem 1.25rem 3rem; box-sizing: border-box;
   }
   .wallet-bar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
   .adena-btn {
@@ -153,8 +149,8 @@
      otherwise fight with) specifically on cells still unplaced, so
      people positioning free-form art can see at a glance what to avoid
      without the color itself being obscured once painted. */
-  .board .cell.reserved-target { outline: 1px solid rgba(130,116,239,0.3); outline-offset: -1px; }
-  .board .cell.reserved-empty { box-shadow: inset 0 0 0 100px rgba(130,116,239,0.16); }
+  .board .cell.reserved-target { outline: 1px solid rgba(130,116,239,0.16); outline-offset: -1px; }
+  .board .cell.reserved-empty { box-shadow: inset 0 0 0 100px rgba(130,116,239,0.07); }
 
   .palette-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin: 1.1rem 0 0.6rem; flex-wrap: wrap; }
   .swatch { width: 32px; height: 32px; border-radius: 7px; cursor: pointer; border: 2px solid var(--border); }
@@ -212,6 +208,18 @@
     background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); border-radius: 8px;
     padding: 0.7rem 0.9rem; font-size: 0.83rem; color: #f87171; margin: 0.75rem 0;
   }
+  .secondary-btn {
+    padding: 0.55rem 1.1rem; border-radius: 8px; border: 1px dashed var(--border);
+    background: none; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 600;
+  }
+  .secondary-btn:hover { background: var(--border-soft); border-color: var(--accent); }
+  .secondary-btn:disabled { opacity: 0.5; cursor: default; }
+  .layer-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; margin: 0.4rem 0; font-size: 0.85rem;
+  }
+  .layer-item button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 0.1rem 0.4rem; border-radius: 4px; }
+  .layer-item button:hover { color: #f87171; background: var(--border-soft); }
   .tab-row { display: flex; gap: 0.5rem; margin-bottom: 1.1rem; }
   .tab-btn {
     flex: 1; padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid var(--border);
@@ -235,7 +243,10 @@
 
 <header class="site-header">
   <div class="site-header-inner">
-    <div class="site-header-spacer"></div>
+    <div class="site-header-left">
+      <button type="button" class="header-nav-link" id="navCustomCanvas" title="Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (free if it happens to match the official design). Click to open." disabled>🖼️ Your own canvas</button>
+      <button type="button" class="header-nav-link" id="navLeaderboard" title="See who's placed the most pixels on the board. Click to open.">🏆 Top contributors</button>
+    </div>
     <div class="site-header-center">
       <h1 id="titleHome" title="Back to center"><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
       <a class="realm-link" href="https://sapphire.testnets.gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels" target="_blank" rel="noopener">View realm ↗</a>
@@ -255,16 +266,6 @@
   </div>
   <p class="status" id="topStatus">Loading…</p>
 </header>
-
-<div class="layout">
-
-<aside class="sidebar sidebar-left">
-  <h2>🖼️ Your own canvas</h2>
-  <div class="sidebar-card teaser-card">
-    <p>Upload an image, we trace it into pixel art, you position it on the board, and pay per pixel to place it — <span id="customFeeNote">0.1 GNOT/pixel</span> for open space, free if it happens to match the official design.</p>
-    <button type="button" id="uploadImageBtn" disabled>Checking availability…</button>
-  </div>
-</aside>
 
 <div class="page">
 
@@ -308,19 +309,11 @@
 
 </div>
 
-<aside class="sidebar sidebar-right">
-  <h2>🏆 Top contributors</h2>
-  <div class="sidebar-card">
-    <ol class="leaderboard" id="leaderboard"><li class="muted">Loading…</li></ol>
-  </div>
-</aside>
-
-</div>
-
 <div class="modal-backdrop" id="customModalBackdrop" style="display:none">
   <div class="modal" id="customModal">
     <button class="modal-close" id="customModalClose" type="button" title="Close">✕</button>
-    <h2>Your own canvas</h2>
+    <h2>🖼️ Your own canvas</h2>
+    <p class="modal-hint">Upload an image or type text — we trace it into pixel art, you position it on the board, then pay per pixel to place it (<span id="customFeeNote">0.1 GNOT/pixel</span> for open space, free if it happens to match the official design).</p>
 
     <div id="customStep1">
       <div class="tab-row">
@@ -338,12 +331,30 @@
       </div>
 
       <div id="customTextPane" style="display:none">
-        <p class="modal-hint">Type whatever you want to spell out — traced in the currently-selected palette color.</p>
+        <p class="modal-hint">Type whatever you want to spell out.</p>
         <input type="text" id="customTextInput" maxlength="24" placeholder="e.g. HELLO WORLD">
+        <div class="field-row">
+          <label for="customTextScale">Size: <span id="customTextScaleLabel">1</span>x</label>
+          <input type="range" id="customTextScale" min="1" max="4" value="1">
+        </div>
+        <div class="field-row">
+          <label>Color</label>
+          <div class="palette-row" id="customTextColorRow" style="justify-content:flex-start; margin:0.4rem 0 0;"></div>
+        </div>
       </div>
 
       <canvas id="customTraceCanvas" class="trace-canvas" style="display:none"></canvas>
       <p class="status" id="customTraceStatus"></p>
+      <p class="status" id="customTraceCostEstimate"></p>
+      <button type="button" class="secondary-btn" id="customAddLayerBtn" disabled>+ Add to design</button>
+
+      <div id="customLayersSection" style="display:none">
+        <p class="modal-hint" style="margin-top:1.1rem">Your design so far — combining image and text stacks them into one piece, submitted and helped-with as a single design:</p>
+        <canvas id="customLayersCanvas" class="trace-canvas"></canvas>
+        <div id="customLayersList"></div>
+        <p class="status" id="customLayersCostEstimate"></p>
+      </div>
+
       <button type="button" class="primary-btn" id="customNextBtn" disabled>Next: position it →</button>
     </div>
 
@@ -357,6 +368,15 @@
       <button type="button" id="customBackBtn">← back</button>
       <p class="status" id="customSubmitStatus"></p>
     </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="leaderboardModalBackdrop" style="display:none">
+  <div class="modal" id="leaderboardModal">
+    <button class="modal-close" id="leaderboardModalClose" type="button" title="Close">✕</button>
+    <h2>🏆 Top contributors</h2>
+    <p class="modal-hint">Every successful placement counts toward your total, including recoloring or erasing an existing cell.</p>
+    <ol class="leaderboard" id="leaderboard"><li class="muted">Loading…</li></ol>
   </div>
 </div>
 
@@ -809,6 +829,7 @@ async function loadCanvas() {
       buildBoard(w, h);
     }
     buildPalette();
+    buildCustomTextPalette();
     paintSnapshot(lastSnapshotStr);
     currentPending = updateHelpSection();
 
@@ -967,21 +988,29 @@ const FONT5X7 = {
   "'": ["..#..", ".#...", ".....", ".....", ".....", ".....", "....."],
 };
 
-function traceTextToPixels(text) {
+// scale replicates each glyph pixel into a scale x scale block -- lets
+// text be sized independently of the fixed 5x7 base font, same idea as
+// the image trace's own width slider controlling its own pixelation.
+function traceTextToPixels(text, scale, colorIndex) {
   const chars = text.toUpperCase().split("");
   const glyphW = 5, glyphH = 7, gap = 1;
-  const width = chars.length * glyphW + Math.max(0, chars.length - 1) * gap;
+  const width = (chars.length * glyphW + Math.max(0, chars.length - 1) * gap) * scale;
   const pixels = [];
   chars.forEach((ch, i) => {
     const glyph = FONT5X7[ch] || FONT5X7[" "];
-    const gx0 = i * (glyphW + gap);
+    const gx0 = i * (glyphW + gap) * scale;
     for (let row = 0; row < glyphH; row++) {
       for (let col = 0; col < glyphW; col++) {
-        if (glyph[row][col] === "#") pixels.push({ dx: gx0 + col, dy: row, c: selectedColor || 1 });
+        if (glyph[row][col] !== "#") continue;
+        for (let sy = 0; sy < scale; sy++) {
+          for (let sx = 0; sx < scale; sx++) {
+            pixels.push({ dx: gx0 + col * scale + sx, dy: row * scale + sy, c: colorIndex });
+          }
+        }
       }
     }
   });
-  return { pixels, width, height: glyphH };
+  return { pixels, width, height: glyphH * scale };
 }
 
 let targetByCoord = null; // Map("x,y" -> colorIndex), built once from TARGET_PATTERN
@@ -1005,7 +1034,7 @@ function pixelFeeLocal(x, y, c) {
 }
 
 async function loadCustomCanvasConfig() {
-  const btn = document.getElementById("uploadImageBtn");
+  const btn = document.getElementById("navCustomCanvas");
   try {
     const [feeRaw, vandalRaw, bulkRaw] = await Promise.all([
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".FeePerPixel()"),
@@ -1018,11 +1047,11 @@ async function loadCustomCanvasConfig() {
     document.getElementById("customFeeNote").textContent = formatGnot(customFeePerPixel) + "/pixel";
     feesSupported = true;
     btn.disabled = false;
-    btn.textContent = "Upload an image";
     loadCommunityDesigns();
   } catch {
     feesSupported = false;
-    btn.textContent = "Needs the next realm update";
+    btn.disabled = true;
+    btn.title = "Needs the next realm update — check back soon.";
   }
 }
 
@@ -1142,19 +1171,162 @@ function drawTracePreview() {
 let customLoadedImage = null;
 let customMode = "image"; // "image" | "text"
 
+// Worst-case estimate, shown before the design is positioned on the
+// board -- at this step we don't know yet which (if any) traced pixels
+// will land on cells that happen to match the official design (free) or
+// overlap it with the wrong color (the higher vandalism rate), so this
+// assumes every pixel costs the normal per-pixel rate. It's exactly
+// what lets someone weigh pixelation-vs-cost with the width slider
+// before committing to a position; updateCustomCost() in step 2 then
+// replaces it with the real free/normal/vandalism breakdown once a
+// position is chosen.
+function updateTraceCostEstimate() {
+  const el = document.getElementById("customTraceCostEstimate");
+  if (!customTracedPixels.length) { el.textContent = ""; return; }
+  if (!feesSupported) { el.textContent = ""; return; }
+  const estUgnot = customTracedPixels.length * customFeePerPixel;
+  el.textContent = `Estimated cost: ~${formatGnot(estUgnot)} at this size (less if some pixels happen to match the official design — that's calculated exactly once you position it).`;
+}
+
 function applyTrace(result) {
   customTracedPixels = result.pixels;
   customTraceWidth = result.width;
   customTraceHeight = result.height;
   drawTracePreview();
   document.getElementById("customTraceStatus").textContent = `${result.pixels.length} pixels traced (${result.width}×${result.height}).`;
-  document.getElementById("customNextBtn").disabled = result.pixels.length === 0;
+  updateTraceCostEstimate();
+  document.getElementById("customAddLayerBtn").disabled = result.pixels.length === 0;
+  updateNextButtonState();
+}
+
+// ---------- combining multiple traces (image + text, etc.) into one design ----------
+//
+// A layer is whatever's currently traced (one image OR one bit of text)
+// -- "+ Add to design" commits it and clears the working trace so the
+// next tab/input builds the NEXT layer. Layers stack vertically, each
+// centered over the widest one, with a 1-cell gap (same convention as
+// the site's own logo/wordmark spacing). Positioning, cost preview, and
+// submission in step 2 already only care about customTracedPixels/
+// Width/Height as one flat pixel set -- finalizeDesignForPositioning()
+// flattens the layers into exactly that shape, so nothing downstream
+// needs to know layers exist at all.
+let customLayers = []; // [{pixels:[{dx,dy,c}], width, height}]
+const LAYER_GAP = 1;
+
+function updateNextButtonState() {
+  document.getElementById("customNextBtn").disabled = customLayers.length === 0 && customTracedPixels.length === 0;
+}
+
+function combinedLayersBounds() {
+  const maxWidth = customLayers.reduce((m, l) => Math.max(m, l.width), 0);
+  let y = 0;
+  const placed = [];
+  customLayers.forEach((layer, i) => {
+    if (i > 0) y += LAYER_GAP;
+    placed.push({ layer, xOffset: Math.floor((maxWidth - layer.width) / 2), yOffset: y });
+    y += layer.height;
+  });
+  return { width: maxWidth, height: y, placed };
+}
+
+function resetWorkingTrace() {
+  customTracedPixels = [];
+  customTraceWidth = 0;
+  customTraceHeight = 0;
+  document.getElementById("customFileInput").value = "";
+  document.getElementById("customTextInput").value = "";
+  customLoadedImage = null;
+  drawTracePreview();
+  document.getElementById("customTraceStatus").textContent = "";
+  document.getElementById("customTraceCostEstimate").textContent = "";
+  document.getElementById("customAddLayerBtn").disabled = true;
+}
+
+function renderLayersList() {
+  const section = document.getElementById("customLayersSection");
+  if (!customLayers.length) { section.style.display = "none"; updateNextButtonState(); return; }
+  section.style.display = "";
+
+  const listEl = document.getElementById("customLayersList");
+  listEl.innerHTML = customLayers.map((layer, i) =>
+    `<div class="layer-item"><span>${i + 1}. ${layer.width}×${layer.height} — ${layer.pixels.length} pixels</span><button type="button" class="layer-remove-btn" data-i="${i}" title="Remove this layer">✕</button></div>`
+  ).join("");
+  listEl.querySelectorAll(".layer-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      customLayers.splice(Number(btn.dataset.i), 1);
+      renderLayersList();
+    });
+  });
+
+  const { width, height, placed } = combinedLayersBounds();
+  const canvas = document.getElementById("customLayersCanvas");
+  const scale = Math.max(2, Math.min(16, Math.floor(360 / Math.max(1, width))));
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  canvas.style.display = "";
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (const { layer, xOffset, yOffset } of placed) {
+    for (const p of layer.pixels) {
+      ctx.fillStyle = paletteColors[p.c] || "#fff";
+      ctx.fillRect((xOffset + p.dx) * scale, (yOffset + p.dy) * scale, scale, scale);
+    }
+  }
+
+  const totalPixels = placed.reduce((n, { layer }) => n + layer.pixels.length, 0);
+  const costEl = document.getElementById("customLayersCostEstimate");
+  costEl.textContent = feesSupported
+    ? `${customLayers.length} layer(s), ${totalPixels} pixels combined — ~${formatGnot(totalPixels * customFeePerPixel)} total estimated (worst case).`
+    : "";
+  updateNextButtonState();
+}
+
+document.getElementById("customAddLayerBtn").addEventListener("click", () => {
+  if (!customTracedPixels.length) return;
+  customLayers.push({ pixels: customTracedPixels, width: customTraceWidth, height: customTraceHeight });
+  resetWorkingTrace();
+  renderLayersList();
+});
+
+function finalizeDesignForPositioning() {
+  if (customTracedPixels.length) {
+    customLayers.push({ pixels: customTracedPixels, width: customTraceWidth, height: customTraceHeight });
+  }
+  const { width, height, placed } = combinedLayersBounds();
+  const pixels = [];
+  for (const { layer, xOffset, yOffset } of placed) {
+    for (const p of layer.pixels) pixels.push({ dx: p.dx + xOffset, dy: p.dy + yOffset, c: p.c });
+  }
+  customTracedPixels = pixels;
+  customTraceWidth = width;
+  customTraceHeight = height;
 }
 
 function retraceCurrentImage() {
   if (!customLoadedImage) return;
   const width = Number(document.getElementById("customWidthSlider").value);
   applyTrace(traceImageToPixels(customLoadedImage, width));
+}
+
+let customTextColor = 1;
+
+function buildCustomTextPalette() {
+  const el = document.getElementById("customTextColorRow");
+  if (!el || !paletteColors.length) return;
+  el.innerHTML = "";
+  paletteColors.forEach((hex, i) => {
+    const sw = document.createElement("div");
+    sw.className = "swatch" + (i === customTextColor ? " selected" : "");
+    sw.style.background = hex;
+    sw.title = hex;
+    sw.addEventListener("click", () => {
+      customTextColor = i;
+      buildCustomTextPalette();
+      retraceCurrentText();
+    });
+    el.appendChild(sw);
+  });
 }
 
 function retraceCurrentText() {
@@ -1165,10 +1337,13 @@ function retraceCurrentText() {
     customTraceHeight = 0;
     drawTracePreview();
     document.getElementById("customTraceStatus").textContent = "";
-    document.getElementById("customNextBtn").disabled = true;
+    document.getElementById("customTraceCostEstimate").textContent = "";
+    document.getElementById("customAddLayerBtn").disabled = true;
+    updateNextButtonState();
     return;
   }
-  applyTrace(traceTextToPixels(text));
+  const scale = Number(document.getElementById("customTextScale").value) || 1;
+  applyTrace(traceTextToPixels(text, scale, customTextColor));
 }
 
 function setCustomMode(mode) {
@@ -1177,7 +1352,12 @@ function setCustomMode(mode) {
   document.getElementById("customTabText").classList.toggle("active", mode === "text");
   document.getElementById("customImagePane").style.display = mode === "image" ? "" : "none";
   document.getElementById("customTextPane").style.display = mode === "text" ? "" : "none";
-  if (mode === "image") retraceCurrentImage(); else retraceCurrentText();
+  if (mode === "image") {
+    retraceCurrentImage();
+  } else {
+    buildCustomTextPalette();
+    retraceCurrentText();
+  }
 }
 document.getElementById("customTabImage").addEventListener("click", () => setCustomMode("image"));
 document.getElementById("customTabText").addEventListener("click", () => setCustomMode("text"));
@@ -1202,6 +1382,10 @@ document.getElementById("customWidthSlider").addEventListener("input", (e) => {
 });
 
 document.getElementById("customTextInput").addEventListener("input", retraceCurrentText);
+document.getElementById("customTextScale").addEventListener("input", (e) => {
+  document.getElementById("customTextScaleLabel").textContent = e.target.value;
+  retraceCurrentText();
+});
 
 function drawCustomPreview() {
   const canvas = document.getElementById("customPreviewCanvas");
@@ -1289,6 +1473,8 @@ document.getElementById("customPreviewCanvas").addEventListener("click", (e) => 
 });
 
 document.getElementById("customNextBtn").addEventListener("click", () => {
+  finalizeDesignForPositioning();
+  if (!customTracedPixels.length) return;
   customOrigin.x = originX + Math.floor(gridWidth / 2) - Math.floor(customTraceWidth / 2);
   customOrigin.y = originY + Math.floor(gridHeight / 2) - Math.floor(customTraceHeight / 2);
   document.getElementById("customStep1").style.display = "none";
@@ -1331,6 +1517,9 @@ document.getElementById("customSubmitBtn").addEventListener("click", async () =>
 });
 
 function openCustomModal() {
+  customLayers = [];
+  resetWorkingTrace();
+  renderLayersList();
   document.getElementById("customModalBackdrop").style.display = "";
   document.getElementById("customStep1").style.display = "";
   document.getElementById("customStep2").style.display = "none";
@@ -1338,10 +1527,23 @@ function openCustomModal() {
 function closeCustomModal() {
   document.getElementById("customModalBackdrop").style.display = "none";
 }
-document.getElementById("uploadImageBtn").addEventListener("click", openCustomModal);
+document.getElementById("navCustomCanvas").addEventListener("click", openCustomModal);
 document.getElementById("customModalClose").addEventListener("click", closeCustomModal);
 document.getElementById("customModalBackdrop").addEventListener("click", (e) => {
   if (e.target.id === "customModalBackdrop") closeCustomModal();
+});
+
+function openLeaderboardModal() {
+  document.getElementById("leaderboardModalBackdrop").style.display = "";
+  loadLeaderboard();
+}
+function closeLeaderboardModal() {
+  document.getElementById("leaderboardModalBackdrop").style.display = "none";
+}
+document.getElementById("navLeaderboard").addEventListener("click", openLeaderboardModal);
+document.getElementById("leaderboardModalClose").addEventListener("click", closeLeaderboardModal);
+document.getElementById("leaderboardModalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "leaderboardModalBackdrop") closeLeaderboardModal();
 });
 
 document.getElementById("titleHome").addEventListener("click", () => {
