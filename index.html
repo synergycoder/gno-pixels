@@ -490,7 +490,7 @@
       <p class="modal-hint">Click on the board to position your design (drag the header if you need to move this dialog).</p>
       <canvas id="customPreviewCanvas" class="preview-canvas"></canvas>
       <p class="overlap-warning" id="customOverlapWarning" style="display:none"></p>
-      <div class="field-row"><label for="customDesignName">Give it a name (shown to the community)</label><input type="text" id="customDesignName" maxlength="60" placeholder="e.g. Our team logo"></div>
+      <div class="field-row"><label for="customDesignName">Give it a name (required — shown to the community)</label><input type="text" id="customDesignName" maxlength="60" placeholder="e.g. Our team logo" required></div>
       <p class="status" id="customCostSummary"></p>
       <button type="button" class="primary-btn" id="customSubmitBtn">Submit for the community to fill in</button>
       <button type="button" id="customBackBtn">← back</button>
@@ -2444,7 +2444,13 @@ document.getElementById("customBackBtn").addEventListener("click", () => {
 document.getElementById("customSubmitBtn").addEventListener("click", async () => {
   const statusEl = document.getElementById("customSubmitStatus");
   const btn = document.getElementById("customSubmitBtn");
-  const name = document.getElementById("customDesignName").value.trim() || "Untitled design";
+  const nameInput = document.getElementById("customDesignName");
+  const name = nameInput.value.trim();
+  if (!name) {
+    statusEl.textContent = "Give your design a name first — please don't leave it as \"Untitled design\".";
+    nameInput.focus();
+    return;
+  }
   btn.disabled = true;
   statusEl.textContent = "Connecting to Adena…";
   try {
