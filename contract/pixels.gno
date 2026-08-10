@@ -1,15 +1,14 @@
-// Package pixelsandbox is a deliberately generic/throwaway practice
-// deployment of the GNO Pixels design -- not the final intended realm
-// name, so redeploying while the design is still changing (which it
-// will be, more than once, on the way to something we're satisfied
-// with) never collides with whatever the real, permanent realm ends
-// up being called.
+// Package pixels is the real, permanent GNO Pixels realm -- gno.land/r/pixelsandbox
+// (this project's earlier scratch deployment, never redeployable in
+// place once live) was always the deliberately generic placeholder
+// name described in this project's own README, kept around exactly so
+// the design could keep changing without colliding with whatever this
+// real deployment ended up being called.
 //
-// Design itself matches this project's local pixelgame3 iteration:
-// expandable bounds instead of a fixed size, per-pixel provenance (who
-// placed it, at what block), and an owner-gated import hook for a
-// possible future migration to a fresh, permanently-named deployment.
-package pixelsandbox
+// Expandable bounds instead of a fixed size, per-pixel provenance (who
+// placed it, at what block), and an owner-gated import hook for
+// migrating the scratch realm's already-placed pixels into this one.
+package pixels
 
 import (
 	"encoding/base64"
@@ -689,7 +688,7 @@ func canvasDataURI() string {
 
 func Render(path string) string {
 	var b strings.Builder
-	b.WriteString("# GNO Pixels (sandbox)\n\n")
+	b.WriteString("# GNO Pixels\n\n")
 	b.WriteString(ufmt.Sprintf(
 		"A %dx%d collaborative on-chain canvas (grows toward a %dx%d max as it fills). `SetPixel(x, y, colorIndex)` takes no address -- the pixel always belongs to whoever signs, and there's a %d-block cooldown per address between placements.\n\n",
 		boardWidth(), maxY-minY+1, MaxBoardDim, MaxBoardDim, CooldownBlocks,
