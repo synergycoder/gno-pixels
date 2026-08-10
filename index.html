@@ -1129,6 +1129,26 @@ async function loadCanvas() {
   }
 }
 
+// SetPixel/SetPixels both funnel through recordPlacement(), which
+// touches 4 avl.Trees (grid, placedBy, placedAtHeight, placementCounts)
+// whose per-op cost grows with total tree size -- confirmed via real
+// chain data (local-deploy/migrate-log.csv) that a single placement
+// against the current board now runs ~17-23M gas and climbing as more
+// people paint. We never used to pass gasFee/gasWanted to DoContract
+// (Adena's own docs show it as optional, auto-estimated), but that
+// auto-estimate is exactly what's now failing for real users -- so
+// these compute a generous, real-data-informed ceiling explicitly
+// instead of trusting Adena to guess it. Chain's real min gas price
+// (confirmed from the same log data) is 0.001 ugnot/gas, i.e. divide
+// gasWanted by 1000 for the matching gasFee.
+const GAS_PER_PIXEL = 40_000_000; // ~2x the highest measured single-placement cost
+const GAS_OVERHEAD = 10_000_000;
+function estimateGas(pixelCount) {
+  const gasWanted = GAS_OVERHEAD + GAS_PER_PIXEL * pixelCount;
+  const gasFee = Math.ceil(gasWanted / 1000);
+  return { gasWanted, gasFee: `${gasFee}ugnot` };
+}
+
 async function placePixel(x, y, colorIndex, statusElOverride) {
   if (placeInFlight) return;
   const statusEl = statusElOverride || document.getElementById("placeStatus");
@@ -1155,11 +1175,14 @@ async function placePixel(x, y, colorIndex, statusElOverride) {
     // it has no logic to spend would just strand real testnet funds in
     // its balance for nothing.
     const feeUgnot = feesSupported ? pixelFeeLocal(x, y, colorIndex) : 0;
+    const { gasWanted, gasFee } = estimateGas(1);
     const res = await window.adena.DoContract({
       messages: [{
         type: "/vm.m_call",
         value: { caller: address, send: feeUgnot > 0 ? `${feeUgnot}ugnot` : "", pkg_path: PIXEL_REALM_PATH, func: "SetPixel", args: [String(x), String(y), String(colorIndex)] },
       }],
+      gasWanted,
+      gasFee,
       networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
     });
     if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
@@ -1194,11 +1217,14 @@ async function placePixelsBulk(pixels, statusElOverride) {
       ? pixels.reduce((sum, [x, y, c]) => sum + pixelFeeLocal(x, y, c), 0)
       : 0;
     const encoded = pixels.map(([x, y, c]) => `${x},${y},${c}`).join(";");
+    const { gasWanted, gasFee } = estimateGas(pixels.length);
     const res = await window.adena.DoContract({
       messages: [{
         type: "/vm.m_call",
         value: { caller: address, send: feeUgnot > 0 ? `${feeUgnot}ugnot` : "", pkg_path: PIXEL_REALM_PATH, func: "SetPixels", args: [encoded] },
       }],
+      gasWanted,
+      gasFee,
       networkInfo: { chainId: NET.chainId, rpcUrl: NET.rpcUrl },
     });
     if (res.status !== "success") throw new Error(res.message || "Transaction was not approved.");
