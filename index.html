@@ -65,7 +65,7 @@
   .title-icon { height: 1.88em; width: auto; vertical-align: middle; margin-right: 0.35rem; border-radius: 15%; position: relative; top: -0.05em; }
   .realm-link { display: inline-block; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; white-space: nowrap; margin-left: 0.6rem; vertical-align: middle; }
   .realm-link:hover { color: var(--accent); text-decoration: underline; }
-  .tagline { color: var(--text-muted); font-size: 0.95rem; margin: 0 0 1.5rem; text-align: center; }
+  .tagline { color: var(--text-muted); font-size: 0.82rem; margin: 0 0 1rem; text-align: left; }
 
   .site-footer {
     position: sticky; bottom: 0; z-index: 20;
@@ -360,6 +360,8 @@
 <div class="layout">
 
 <aside class="side-column">
+  <p class="tagline">A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
+
   <div class="mini-card" id="officialMiniCard" style="display:none">
     <div class="mini-card-header">
       <canvas id="officialMiniThumb" class="mini-card-thumb"></canvas>
@@ -386,8 +388,6 @@
 </aside>
 
 <div class="main-column">
-
-<p class="tagline">A collaborative on-chain canvas for gno.land — pick a color, place a pixel. Every placement is a real transaction, signed by you, on <strong>sapphire-1</strong>.</p>
 
 <div id="app" style="display:none">
   <div class="board-wrap" id="boardWrap"><div class="board" id="board"></div></div>
@@ -489,6 +489,17 @@
       <button type="button" id="customBackBtn">← back</button>
       <p class="status" id="customSubmitStatus"></p>
     </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="imageWarningModalBackdrop" style="display:none">
+  <div class="modal" id="imageWarningModal" style="max-width:420px">
+    <button class="modal-close" id="imageWarningModalClose" type="button" title="Close">✕</button>
+    <h2>⚠️ Before you upload</h2>
+    <p class="modal-hint">The tracer only works well on images that are already simple and low-resolution — logos, icons, flat-color art. It also can't match colors it doesn't have: only the board's own 9-color palette is available, so anything outside that gets mapped to the closest color, which can come out wrong.</p>
+    <p class="modal-hint">If your image doesn't fit that (photos, gradients, lots of detail), we recommend <strong>free draw</strong> instead — you get full control over exactly which of the 9 colors lands on each cell.</p>
+    <button type="button" class="secondary-btn" id="imageWarningSwitchToDraw">Use free draw instead</button>
+    <button type="button" class="primary-btn" id="imageWarningProceed" style="margin-left:0.6rem">Got it, continue to upload</button>
   </div>
 </div>
 
@@ -2066,7 +2077,30 @@ function setCustomMode(mode) {
     updateDrawTrace();
   }
 }
-document.getElementById("customTabImage").addEventListener("click", () => setCustomMode("image"));
+// Shown once per page load, the first time someone opens the image
+// tab -- not on every click, since re-visiting the tab while flipping
+// between draw/text/image while designing shouldn't re-nag.
+let imageWarningShown = false;
+document.getElementById("customTabImage").addEventListener("click", () => {
+  if (imageWarningShown) { setCustomMode("image"); return; }
+  document.getElementById("imageWarningModalBackdrop").style.display = "";
+});
+document.getElementById("imageWarningProceed").addEventListener("click", () => {
+  imageWarningShown = true;
+  document.getElementById("imageWarningModalBackdrop").style.display = "none";
+  setCustomMode("image");
+});
+document.getElementById("imageWarningSwitchToDraw").addEventListener("click", () => {
+  imageWarningShown = true;
+  document.getElementById("imageWarningModalBackdrop").style.display = "none";
+  setCustomMode("draw");
+});
+document.getElementById("imageWarningModalClose").addEventListener("click", () => {
+  document.getElementById("imageWarningModalBackdrop").style.display = "none";
+});
+document.getElementById("imageWarningModalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "imageWarningModalBackdrop") document.getElementById("imageWarningModalBackdrop").style.display = "none";
+});
 document.getElementById("customTabText").addEventListener("click", () => setCustomMode("text"));
 document.getElementById("customTabDraw").addEventListener("click", () => setCustomMode("draw"));
 
