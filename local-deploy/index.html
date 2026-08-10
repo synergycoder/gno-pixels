@@ -113,6 +113,29 @@
 
 <div class="batch-stats" id="migrateStats"></div>
 
+<hr>
+
+<h1>Rename a community design</h1>
+<p>The contract has no rename of its own, so this reads the design's current pixels, delists the old entry (<code>RemoveCommunityDesign</code> -- any pixels already placed toward it stay exactly as painted on the board either way), then resubmits the same pixels under the new name (<code>SubmitCommunityDesign</code>). Two real transactions, two real fees. The design gets a brand new id -- check <code>ListCommunityDesigns()</code> on the site afterward if you need it.</p>
+
+<div class="field"><label>Design id (e.g. d11)</label><input id="renameDesignId" type="text" placeholder="d11"></div>
+<div class="field"><label>New name</label><input id="renameNewName" type="text" placeholder="e.g. GNOswap"></div>
+
+<p><button id="renameBtn">Rename</button></p>
+
+<div class="status" id="renameStatus"></div>
+
+<hr>
+
+<h1>Remove a community design</h1>
+<p>Delists a design outright via <code>RemoveCommunityDesign</code> -- one real transaction, no resubmit. Any pixels already placed toward it stay exactly as painted on the board; this only stops it being offered for people to help fill in further.</p>
+
+<div class="field"><label>Design id (e.g. d5)</label><input id="removeDesignId" type="text" placeholder="d5"></div>
+
+<p><button id="removeBtn">Remove</button></p>
+
+<div class="status" id="removeStatus"></div>
+
 <script>
 let lastEstimate = null;
 
@@ -523,6 +546,89 @@ document.getElementById("startMigrateBtn").addEventListener("click", async () =>
 
 // Pick up an already-running migration batch on page load (e.g. after a refresh).
 pollMigrateBatch();
+
+function setRenameStatus(text, cls) {
+  const el = document.getElementById("renameStatus");
+  el.className = "status" + (cls ? " " + cls : "");
+  el.textContent = text;
+}
+
+document.getElementById("renameBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  const designId = document.getElementById("renameDesignId").value.trim();
+  const newName = document.getElementById("renameNewName").value.trim();
+  if (!keyringHome || !keyName || !password) {
+    setRenameStatus("Fill in keyring home, key name, and password above first.", "error");
+    return;
+  }
+  if (!designId || !newName) {
+    setRenameStatus("Fill in both the design id and the new name.", "error");
+    return;
+  }
+  if (!confirm(`This will remove "${designId}" and resubmit it as "${newName}" -- two real transactions, real testnet GNOT. Continue?`)) return;
+  const btn = document.getElementById("renameBtn");
+  btn.disabled = true;
+  btn.textContent = "Renaming…";
+  setRenameStatus("");
+  try {
+    const res = await fetch("/renamedesign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password, designId, newName }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "rename failed");
+    setRenameStatus(
+      `Renamed! "${designId}" (${data.pixelCount} px) is now "${newName}" as ${data.newId}.\n` +
+      `Remove tx: ${data.removeTxHash}\nSubmit tx: ${data.submitTxHash}`,
+      "success",
+    );
+  } catch (err) {
+    setRenameStatus("Rename failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Rename";
+  }
+});
+
+function setRemoveStatus(text, cls) {
+  const el = document.getElementById("removeStatus");
+  el.className = "status" + (cls ? " " + cls : "");
+  el.textContent = text;
+}
+
+document.getElementById("removeBtn").addEventListener("click", async () => {
+  const { keyringHome, keyName, password } = formValues();
+  const designId = document.getElementById("removeDesignId").value.trim();
+  if (!keyringHome || !keyName || !password) {
+    setRemoveStatus("Fill in keyring home, key name, and password above first.", "error");
+    return;
+  }
+  if (!designId) {
+    setRemoveStatus("Fill in the design id.", "error");
+    return;
+  }
+  if (!confirm(`This will permanently delist "${designId}" -- one real transaction, real testnet GNOT. Continue?`)) return;
+  const btn = document.getElementById("removeBtn");
+  btn.disabled = true;
+  btn.textContent = "Removing…";
+  setRemoveStatus("");
+  try {
+    const res = await fetch("/removedesign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyringHome, keyName, password, designId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "remove failed");
+    setRemoveStatus(`Removed! "${designId}" is delisted.\nTx: ${data.txHash}`, "success");
+  } catch (err) {
+    setRemoveStatus("Remove failed:\n" + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Remove";
+  }
+});
 </script>
 
 </body>

@@ -106,6 +106,48 @@ function callArgs({ keyringHome, func, args }) {
   ];
 }
 
+// Read-only vm/qeval query -- same abci_query shape as /bounds below,
+// pulled out so the rename endpoint can reuse it for both fetching the
+// design's current pixels and finding the newly-resubmitted id.
+async function qeval(expr) {
+  const data = Buffer.from(expr).toString("base64");
+  const url = `${RPC_URL}/abci_query?path=%22vm%2Fqeval%22&data=%22${encodeURIComponent(data)}%22`;
+  const rpcRes = await fetch(url);
+  const json = await rpcRes.json();
+  return Buffer.from(json.result.response.ResponseBase.Data, "base64").toString("utf8");
+}
+
+// Same regex the site's own frontend uses to unwrap a qeval string
+// result (e.g. `("hello" string)` -> "hello").
+function parseGnoEvalString(raw) {
+  const m = /^\("((?:[^"\\]|\\.)*)"\s+string\)/.exec((raw || "").trim());
+  if (!m) return null;
+  try { return JSON.parse('"' + m[1] + '"'); } catch { return null; }
+}
+
+// One simulate-then-broadcast call, for owner actions that are a
+// single contract call rather than a batch job (ForceExpand, and the
+// two calls a design rename needs).
+async function callOnce(func, args, payload) {
+  const buildArgs = (opts) => callArgs({ ...opts, func, args });
+  const sim = await simulate(buildArgs, payload);
+  const result = await broadcast(buildArgs, { ...payload, gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot });
+  return { ...sim, ...result };
+}
+
+// communityDesignCount only ever increments and ids are assigned in
+// order ("d0", "d1", ...), so after a fresh SubmitCommunityDesign the
+// new id is always whatever's now last in the list -- no need to match
+// it back by name or pixel data.
+async function findNewestDesignId() {
+  const raw = await qeval(`${PKG_PATH}.ListCommunityDesigns()`);
+  const csv = parseGnoEvalString(raw) || "";
+  if (!csv) return null;
+  const rows = csv.split(";").filter(Boolean);
+  const last = rows[rows.length - 1];
+  return last ? last.split(",")[0] : null;
+}
+
 async function simulate(buildArgs, { keyringHome, keyName, password }) {
   const { stdout } = await runGnokey(
     [...buildArgs({ keyringHome }), "-gas-fee", "1ugnot", "-gas-wanted", SIMULATE_GAS_CEILING, "-simulate", "only", keyName],
@@ -498,6 +540,60 @@ const server = http.createServer(async (req, res) => {
       const sim = await simulate(buildArgs, payload);
       const result = await broadcast(buildArgs, { ...payload, gasWanted: sim.gasWanted, gasFeeUgnot: sim.gasFeeUgnot });
       sendJson(res, 200, { ...sim, ...result });
+    } catch (err) {
+      sendJson(res, 500, { error: errText(err) });
+    }
+    return;
+  }
+
+  // Renames a community design: the contract has no rename of its own,
+  // so this reads the design's current pixels, removes the old listing
+  // (RemoveCommunityDesign only delists it -- any pixels already placed
+  // toward it stay exactly as painted on the board either way), then
+  // resubmits the same pixels under the new name (SubmitCommunityDesign).
+  // Two real transactions, two real fees -- same "insufficient payment"
+  // panic as anything else if the wallet's short.
+  if (req.method === "POST" && req.url === "/renamedesign") {
+    try {
+      const payload = await readBody(req);
+      const { keyringHome, keyName, password, designId, newName } = payload;
+      if (!keyringHome || !keyName || !password || !designId || !newName) {
+        sendJson(res, 400, { error: "keyringHome, keyName, password, designId, and newName are required" });
+        return;
+      }
+      const raw = await qeval(`${PKG_PATH}.GetCommunityDesign(${JSON.stringify(designId)})`);
+      const encoded = parseGnoEvalString(raw);
+      if (!encoded) throw new Error(`No design found for id "${designId}"`);
+      const removeResult = await callOnce("RemoveCommunityDesign", [designId], payload);
+      const submitResult = await callOnce("SubmitCommunityDesign", [newName, encoded], payload);
+      const newId = await findNewestDesignId();
+      sendJson(res, 200, {
+        removeTxHash: removeResult.txHash,
+        submitTxHash: submitResult.txHash,
+        newId,
+        pixelCount: encoded.split(";").filter(Boolean).length,
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: errText(err) });
+    }
+    return;
+  }
+
+  // Delists a community design outright -- no resubmit. Pixels already
+  // placed toward it stay exactly as painted on the board either way
+  // (RemoveCommunityDesign only removes it from ListCommunityDesigns/
+  // GetCommunityDesign, per the contract's own doc comment); this just
+  // stops it from being offered to help fill in any further.
+  if (req.method === "POST" && req.url === "/removedesign") {
+    try {
+      const payload = await readBody(req);
+      const { keyringHome, keyName, password, designId } = payload;
+      if (!keyringHome || !keyName || !password || !designId) {
+        sendJson(res, 400, { error: "keyringHome, keyName, password, and designId are required" });
+        return;
+      }
+      const result = await callOnce("RemoveCommunityDesign", [designId], payload);
+      sendJson(res, 200, { txHash: result.txHash });
     } catch (err) {
       sendJson(res, 500, { error: errText(err) });
     }
