@@ -1211,6 +1211,7 @@ async function loadCanvas() {
     buildCustomDrawPalette();
     paintSnapshot(lastSnapshotStr);
     currentPending = updateHelpSection();
+    if (lastCommunityDesignsRaw.length) renderCommunityDesigns(lastCommunityDesignsRaw);
 
     document.getElementById("totalStat").innerHTML = `<b>${parseGnoEvalNumber(totalRaw)}</b> total placements`;
     document.getElementById("occupiedStat").innerHTML = `<b>${parseGnoEvalNumber(occupiedRaw)}</b> / ${w * h} cells painted`;
@@ -1499,6 +1500,18 @@ async function loadCustomCanvasConfig() {
 }
 
 // ---------- community designs (submitted via the modal above) ----------
+// Cached raw (pre-progress) design list -- loadCanvas() and
+// loadCommunityDesigns() both run on the same 8s poll timer but in
+// parallel, unsequenced, and loadCanvas()'s indexer-based snapshot
+// rebuild isn't always the faster of the two. Recomputing progress
+// only inside loadCommunityDesigns() meant it could render against a
+// not-yet-refreshed lastSnapshotStr and get stuck showing stale (often
+// all-zero) progress. Caching the raw list here lets loadCanvas() also
+// re-run renderCommunityDesigns() against whatever snapshot it just
+// fetched, so progress is always recomputed against the freshest
+// snapshot available, regardless of which call finishes first.
+let lastCommunityDesignsRaw = [];
+
 async function loadCommunityDesigns() {
   const list = document.getElementById("communityDesignsList");
   if (!feesSupported) { list.style.display = "none"; return; }
@@ -1517,9 +1530,9 @@ async function loadCommunityDesigns() {
       return { ...r, pixels };
     }));
     list.style.display = "";
+    lastCommunityDesignsRaw = designs;
     renderCommunityDesigns(designs);
   } catch {
-    toggleBtn.style.display = "none";
     list.style.display = "none";
   }
 }
