@@ -1236,11 +1236,13 @@ document.getElementById("helpPixelCount").addEventListener("keydown", (e) => {
 // more rows, which is a solved problem (pagination), not a hard wall.
 const INDEXER_REPLAY_FUNCS = ["SetPixel", "SetPixels", "ImportHistoricalPixel"];
 
-function boardCallsQuery(func) {
+function boardCallsQuery(func, fromHeight, toHeight) {
+  const heightFilter = fromHeight != null ? `block_height: { gt: ${fromHeight - 1}, lt: ${toHeight + 1} },` : "";
   return `query {
     getTransactions(
       where: {
         success: { eq: true },
+        ${heightFilter}
         messages: { value: { MsgCall: { pkg_path: { eq: "${PIXEL_REALM_PATH}" }, func: { eq: "${func}" } } } }
       },
       order: { heightAndIndex: ASC }
@@ -1258,19 +1260,58 @@ function applyPixelWrite(dense, w, h, minX, minY, x, y, colorIndex) {
   dense[idx] = colorIndex === 0 ? "0" : String(colorIndex);
 }
 
-async function buildSnapshotFromIndexer(w, h, minX, minY) {
-  const dense = new Array(w * h).fill("0");
-  const results = await Promise.all(
-    INDEXER_REPLAY_FUNCS.map((func) => indexerGraphqlQuery(boardCallsQuery(func)))
-  );
+// Fetches one func's full call history in adaptively-sized block-height
+// chunks instead of one unbounded query. The indexer enforces a flat "max
+// elements per query reached (10000)" cap with no limit/offset pagination
+// at all (confirmed against this exact indexer while fixing the identical
+// problem in gno.observer's own build-cache.mjs, earlier the same day) --
+// narrowing the block_height range is the only lever. Starts optimistic,
+// halves the window on a cap hit (or any connectivity-shaped failure --
+// this board's real, live growth is exactly what turned an unbounded
+// single query from "fine" into "routinely times out", confirmed live
+// while investigating a page-stuck-loading report), grows back after a
+// run of successes.
+async function fetchBoardCallsChunked(func, latestHeight) {
   const calls = [];
-  for (const data of results) {
-    for (const tx of data.getTransactions) {
+  let chunkSize = 50000;
+  const minChunk = 500;
+  let consecutiveOk = 0;
+  let from = 0;
+  while (from <= latestHeight) {
+    const to = Math.min(from + chunkSize - 1, latestHeight);
+    let data;
+    try {
+      data = await indexerGraphqlQuery(boardCallsQuery(func, from, to));
+    } catch (err) {
+      if (chunkSize > minChunk) {
+        chunkSize = Math.max(minChunk, Math.floor(chunkSize / 2));
+        consecutiveOk = 0;
+        continue; // retry the same `from` with a smaller window
+      }
+      throw err;
+    }
+    for (const tx of data.getTransactions || []) {
       const msg = (tx.messages || [])[0];
       if (!msg || !msg.value) continue;
       calls.push({ height: tx.block_height, index: tx.index, func: msg.value.func, args: msg.value.args });
     }
+    from = to + 1;
+    consecutiveOk++;
+    if (consecutiveOk >= 3 && chunkSize < 50000) {
+      chunkSize = Math.min(50000, chunkSize * 2);
+      consecutiveOk = 0;
+    }
   }
+  return calls;
+}
+
+async function buildSnapshotFromIndexer(w, h, minX, minY) {
+  const dense = new Array(w * h).fill("0");
+  const { latestBlockHeight } = await indexerGraphqlQuery("query { latestBlockHeight }");
+  const perFunc = await Promise.all(
+    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight))
+  );
+  const calls = perFunc.flat();
   // heightAndIndex ASC already orders each func's own results correctly,
   // but the three lists still need interleaving with each other.
   calls.sort((a, b) => a.height - b.height || a.index - b.index);
