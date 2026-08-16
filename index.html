@@ -632,6 +632,25 @@
 const NET = {
   chainId: "sapphire-1",
   rpcUrl: "https://rpc.sapphire.testnets.gno.land",
+  // Fallback list for abciQuery (see its own comment) — same vetting and
+  // reasoning as gno.observer's identical NETWORKS.sapphire.rpcUrls (built
+  // the same day, for the same official-RPC flakiness): community-run,
+  // shared in gno.land's Telegram, correct chain-id and block data in
+  // agreement with the official endpoint, a real vm/qeval call correctly
+  // executed by the Gno VM, and cross-referenced against
+  // gno-validator.nodesync.top's public validator set (registered,
+  // actively-participating validators with long uptime histories, not
+  // anonymous infra). Only 2 of the original 4 candidates: two others
+  // (luckystar, oshvank) each send a duplicated Access-Control-Allow-Origin
+  // header that a real browser's CORS check rejects — confirmed via an
+  // actual in-browser fetch() failing on both despite curl reporting them
+  // healthy. Not officially endorsed by gno.land; re-verify if either of
+  // these ever starts behaving oddly.
+  rpcUrls: [
+    "https://rpc.sapphire.testnets.gno.land",
+    "https://gnoland-sapphire-rpc.corenodehq.xyz",
+    "https://gnoland-sapphire-rpc.hazennetworksolutions.com",
+  ],
   indexerUrl: "https://indexer.sapphire.testnets.gno.land/graphql/query",
 };
 
@@ -660,9 +679,9 @@ const PIXEL_REALM_PATH = "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pi
 const ADENA_APP_NAME = "GNO Pixels";
 
 // ---------- low-level chain access (same approach as gno-observer's own abciQuery) ----------
-async function abciQuery(path, dataStr, timeoutMs = 15000) {
+async function abciQuerySingle(rpcUrl, path, dataStr, timeoutMs) {
   const data = btoa(unescape(encodeURIComponent(dataStr)));
-  const url = `${NET.rpcUrl}/abci_query?path=${encodeURIComponent('"' + path + '"')}&data=${encodeURIComponent('"' + data + '"')}`;
+  const url = `${rpcUrl}/abci_query?path=${encodeURIComponent('"' + path + '"')}&data=${encodeURIComponent('"' + data + '"')}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
@@ -678,7 +697,7 @@ async function abciQuery(path, dataStr, timeoutMs = 15000) {
     // this at least names the actual endpoint and the likely cause instead
     // of a string that means nothing to someone who isn't a developer.
     if (err instanceof TypeError) {
-      throw new Error(`Couldn't reach the RPC endpoint (${NET.rpcUrl}) — it isn't responding right now. This is usually temporary; try again in a moment.`);
+      throw new Error(`Couldn't reach the RPC endpoint (${rpcUrl}) — it isn't responding right now. This is usually temporary; try again in a moment.`);
     }
     throw err;
   } finally {
@@ -693,6 +712,48 @@ async function abciQuery(path, dataStr, timeoutMs = 15000) {
     throw new Error(msg);
   }
   return raw ? decodeURIComponent(escape(atob(raw))) : "";
+}
+
+// Sticky index into NET.rpcUrls of the last endpoint that actually
+// answered — success OR a genuine on-chain error, both prove the endpoint
+// itself is reachable, which is the thing worth remembering. Sticky for
+// the rest of this page session so a downed primary doesn't cost its full
+// timeout again on every single query — one site, one network here
+// (unlike gno.observer's multi-network version), so a plain index is
+// enough, no need to key it by chainId. loadCanvas() (this file's first
+// real query) only runs once every earlier declaration in this script has
+// already executed (it's called at the very bottom of the file), so unlike
+// gno.observer this has no temporal-dead-zone risk worth guarding against.
+let lastGoodRpcIndex = 0;
+
+async function abciQuery(path, dataStr, timeoutMs = 15000) {
+  const urls = NET.rpcUrls || [NET.rpcUrl];
+  let lastErr;
+  for (let offset = 0; offset < urls.length; offset++) {
+    const idx = (lastGoodRpcIndex + offset) % urls.length;
+    try {
+      const result = await abciQuerySingle(urls[idx], path, dataStr, timeoutMs);
+      lastGoodRpcIndex = idx;
+      return result;
+    } catch (err) {
+      lastErr = err;
+      // Only fall through to the next endpoint for a connectivity-class
+      // failure — a real on-chain error (e.g. an invalid package path)
+      // would be the identical answer from every endpoint, so retrying it
+      // elsewhere would just waste time to arrive at the same result.
+      if (!/isn't responding right now|^RPC timed out/.test(err.message)) {
+        // The endpoint itself answered fine here — a genuine on-chain
+        // error, not a reason to distrust it.
+        lastGoodRpcIndex = idx;
+        throw err;
+      }
+    }
+  }
+  throw new Error(
+    urls.length > 1
+      ? `All ${urls.length} RPC endpoints are unreachable right now — this is unusual, try again in a moment (${path})`
+      : lastErr.message
+  );
 }
 
 function parseGnoEvalNumber(raw) {
