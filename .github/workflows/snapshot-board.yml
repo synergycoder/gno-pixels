@@ -1,0 +1,48 @@
+name: Snapshot board for backup
+
+on:
+  schedule:
+    # Daily, not more often — this is a disaster-recovery backup, not a
+    # live feed, and a full sweep is ~20k individual RPC calls (see
+    # scripts/snapshot-board.mjs's own comment on why it can't use
+    # Snapshot() anymore). Running this on a tight cadence would put real,
+    # unnecessary load on RPC endpoints that are already known to be
+    # flaky under load.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snapshot-board
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    # A full board sweep (all cells via PlacedBy, then GetPixel for each
+    # occupied one) is slow by nature — real headroom over a rough local
+    # timing pass, not a tight bound.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run board snapshot
+        run: node scripts/snapshot-board.mjs
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "anonymous"
+          git config user.email "anonymous@users.noreply.github.com"
+          git add data/board-snapshot.json
+          if git diff --cached --quiet; then
+            echo "No board changes, nothing to commit."
+          else
+            git commit -m "Update board snapshot backup [skip ci]"
+            git push
+          fi
