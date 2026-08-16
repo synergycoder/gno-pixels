@@ -670,6 +670,16 @@ async function abciQuery(path, dataStr, timeoutMs = 15000) {
     res = await fetch(url, { signal: controller.signal });
   } catch (err) {
     if (err.name === "AbortError") throw new Error(`RPC timed out after ${timeoutMs / 1000}s`);
+    // Browsers deliberately collapse every network-layer fetch failure —
+    // DNS failure, connection refused, the host being down, a CORS block —
+    // into the same generic "TypeError: Failed to fetch", with no way to
+    // tell which one happened (a security/privacy measure, not a bug).
+    // Surfacing that raw message left people with no idea what to do next;
+    // this at least names the actual endpoint and the likely cause instead
+    // of a string that means nothing to someone who isn't a developer.
+    if (err instanceof TypeError) {
+      throw new Error(`Couldn't reach the RPC endpoint (${NET.rpcUrl}) — it isn't responding right now. This is usually temporary; try again in a moment.`);
+    }
     throw err;
   } finally {
     clearTimeout(timer);
@@ -1239,7 +1249,13 @@ async function loadCanvas() {
       cooldownEl.textContent = "Connect Adena to place a pixel";
     }
   } catch (err) {
-    if (deployedOnChain === null) {
+    // A pure connectivity failure (the two messages abciQuery produces for
+    // that) got mislabeled as "hasn't been deployed yet" on a fresh page
+    // load, since deployedOnChain is still null then regardless of WHY the
+    // very first query failed — actively wrong when the RPC is just down,
+    // not when the realm genuinely doesn't exist yet.
+    const isConnectivityError = /Couldn't reach the RPC endpoint|RPC timed out/.test(err.message);
+    if (deployedOnChain === null && !isConnectivityError) {
       deployedOnChain = false;
       statusEl.textContent = "GNO Pixels hasn't been deployed yet — check back soon.";
     } else {
