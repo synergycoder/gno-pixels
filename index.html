@@ -129,6 +129,11 @@
   .faucet-label { font-size: 0.72rem; line-height: 1.25; text-align: left; }
   .status { color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0.5rem 0; }
   .status.error { color: #f87171; }
+  .status-retry-btn {
+    padding: 0.2rem 0.6rem; border-radius: 6px; border: 1px solid #f87171; background: none;
+    color: #f87171; cursor: pointer; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+  }
+  .status-retry-btn:hover { background: rgba(248,113,113,0.12); }
 
   /* Left sidebar: the official-design progress card (always visible,
      not collapsible -- "ours") plus the collapsible, sorted community
@@ -152,7 +157,18 @@
      worth visually setting apart from user-submitted designs at a glance. */
   #officialMiniCard { background: rgba(250,204,21,0.1); border-color: rgba(250,204,21,0.45); }
   #officialMiniCard .mini-progress-fill { background: #facc15; }
+  /* Pinned uses the same gold as the official card -- both mean "worth
+     noticing first" -- but a dashed border keeps it visually distinct from
+     official's solid one, so the two "this one's special" cues don't read
+     as the same thing at a glance. */
+  .mini-card.pinned { background: rgba(250,204,21,0.08); border: 1px dashed rgba(250,204,21,0.5); }
   .mini-card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+  .mini-pin-btn {
+    flex: 0 0 auto; background: none; border: none; cursor: pointer; font-size: 0.95rem;
+    opacity: 0.35; padding: 0.1rem 0.2rem; line-height: 1; border-radius: 4px;
+  }
+  .mini-pin-btn:hover { opacity: 0.75; background: rgba(255,255,255,0.08); }
+  .mini-pin-btn.pinned { opacity: 1; }
   .mini-card-thumb {
     width: 30px; height: 30px; border-radius: 6px; flex: 0 0 auto;
     image-rendering: pixelated; background: #000; object-fit: contain;
@@ -657,19 +673,34 @@ const NET = {
 async function indexerGraphqlQuery(query, timeoutMs = 20000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
   try {
-    const res = await fetch(NET.indexerUrl, {
+    res = await fetch(NET.indexerUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
       signal: controller.signal,
     });
-    const json = await res.json();
-    if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
-    return json.data;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error(`Indexer query timed out after ${timeoutMs / 1000}s`);
+    // Same gap as abciQuery had before its own fix: this had no try/catch
+    // around the fetch at all, so a raw "Failed to fetch" (or anything
+    // else) propagated straight through with zero conversion. Caught live:
+    // this is what was actually behind the page getting stuck showing
+    // "hasn't been deployed yet" during a real indexer hiccup -- the
+    // catch-all in loadCanvas() only recognized abciQuery's own connectivity
+    // messages, so an indexer failure (a completely different endpoint)
+    // fell through to the wrong branch every time, no exceptions.
+    if (err instanceof TypeError) {
+      throw new Error(`Couldn't reach the indexer (${NET.indexerUrl}) — it isn't responding right now. This is usually temporary; try again in a moment.`);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
+  const json = await res.json();
+  if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
+  return json.data;
 }
 // Practice/scratch realm name -- deliberately NOT the final intended name,
 // so early iteration (redeploying while the design is still changing)
@@ -1310,15 +1341,33 @@ async function loadCanvas() {
       cooldownEl.textContent = "Connect Adena to place a pixel";
     }
   } catch (err) {
-    // A pure connectivity failure (the two messages abciQuery produces for
-    // that) got mislabeled as "hasn't been deployed yet" on a fresh page
-    // load, since deployedOnChain is still null then regardless of WHY the
-    // very first query failed — actively wrong when the RPC is just down,
-    // not when the realm genuinely doesn't exist yet.
-    const isConnectivityError = /Couldn't reach the RPC endpoint|RPC timed out/.test(err.message);
+    // A pure connectivity failure -- from EITHER abciQuery (RPC) or
+    // indexerGraphqlQuery (a completely separate endpoint, used by
+    // buildSnapshotFromIndexer partway through this same function) --
+    // got mislabeled as "hasn't been deployed yet" on a fresh page load,
+    // since deployedOnChain is still null then regardless of WHY the very
+    // first query failed. Caught live: a real moment where the indexer
+    // (not the RPC) was the one having trouble still showed this same
+    // wrong message, since indexerGraphqlQuery's failures didn't match
+    // this pattern at all -- keep this in sync with both functions' own
+    // error messages if either changes.
+    const isConnectivityError = /Couldn't reach the RPC endpoint|RPC timed out|RPC endpoints are unreachable|Couldn't reach the indexer|Indexer query timed out/.test(err.message);
     if (deployedOnChain === null && !isConnectivityError) {
       deployedOnChain = false;
       statusEl.textContent = "GNO Pixels hasn't been deployed yet — check back soon.";
+    } else if (isConnectivityError) {
+      // All configured endpoints failing AT ONCE should be rare and
+      // transient (see abciQuery's own fallback) — but with no auto-retry,
+      // that one bad moment used to strand the page until a full manual
+      // reload. A retry button costs nothing and covers it.
+      statusEl.textContent = "";
+      statusEl.append(err.message + " ");
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "status-retry-btn";
+      retryBtn.textContent = "Retry";
+      retryBtn.addEventListener("click", () => loadCanvas());
+      statusEl.append(retryBtn);
     } else {
       statusEl.textContent = "Error: " + err.message;
     }
@@ -1730,16 +1779,59 @@ document.getElementById("officialMiniThumb").addEventListener("mouseleave", hide
 
 let lastCommunityWithProgress = [];
 
+// Client-side only -- pinning is a personal viewing preference (like
+// pinning a Telegram chat), not on-chain data, so localStorage is the
+// right place for it, not the realm. Stored as an array in pin order
+// (oldest pin first, so a plain .push() on pin + splice-out on unpin is
+// enough); rendered most-recently-pinned first by reversing it, matching
+// the Telegram convention this was explicitly modeled on. Multiple
+// designs can be pinned at once -- this is a Set-like list, not a single
+// slot.
+const PINNED_DESIGNS_STORAGE_KEY = "gnoPixelsPinnedDesignIds";
+let pinnedDesignIds = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(PINNED_DESIGNS_STORAGE_KEY) || "[]");
+  if (Array.isArray(saved)) pinnedDesignIds = saved.filter((id) => typeof id === "string");
+} catch {}
+
+function savePinnedDesignIds() {
+  try { localStorage.setItem(PINNED_DESIGNS_STORAGE_KEY, JSON.stringify(pinnedDesignIds)); } catch {}
+}
+
+// Pinned first (most-recently-pinned on top), then everyone else newest
+// submitted first, plain creation order. Ids are assigned sequentially at
+// submission time ("d0", "d1", ...), so the numeric suffix IS creation
+// order. Pulled out on its own so togglePinDesign can re-sort the already-
+// fetched list in place -- calling just renderCommunityListDom() (as this
+// originally did) re-renders in whatever order the array already happens
+// to be in, without re-sorting it, so a pin/unpin visually did nothing
+// until the next full data refresh. Caught live: clicking pin moved
+// nothing.
+function sortCommunityDesigns(list) {
+  const designIdNum = (id) => Number((id || "").replace(/^d/, "")) || 0;
+  list.sort((a, b) => {
+    const aPin = pinnedDesignIds.indexOf(a.id), bPin = pinnedDesignIds.indexOf(b.id);
+    if (aPin !== -1 && bPin !== -1) return bPin - aPin; // both pinned: most recently pinned first
+    if (aPin !== -1 || bPin !== -1) return aPin !== -1 ? -1 : 1; // pinned always beats unpinned
+    return designIdNum(b.id) - designIdNum(a.id);
+  });
+}
+
+function togglePinDesign(id) {
+  const i = pinnedDesignIds.indexOf(id);
+  if (i === -1) pinnedDesignIds.push(id);
+  else pinnedDesignIds.splice(i, 1);
+  savePinnedDesignIds();
+  sortCommunityDesigns(lastCommunityWithProgress);
+  renderCommunityListDom();
+}
+
 function renderCommunityDesigns(designs) {
   const withProgress = designs.map((d) => {
     const pending = d.pixels.filter(([x, y, c]) => liveColorAt(x, y) !== c);
     return { ...d, pending, done: d.pixels.length - pending.length };
   });
-  // Newest submitted first, plain creation order -- no completion-status
-  // grouping. Ids are assigned sequentially at submission time ("d0",
-  // "d1", ...), so the numeric suffix IS creation order.
-  const designIdNum = (id) => Number((id || "").replace(/^d/, "")) || 0;
-  withProgress.sort((a, b) => designIdNum(b.id) - designIdNum(a.id));
+  sortCommunityDesigns(withProgress);
   lastCommunityWithProgress = withProgress;
   renderCommunityListDom();
 }
@@ -1757,11 +1849,14 @@ function renderCommunityListDom() {
     const pct = d.pixels.length ? Math.round((d.done / d.pixels.length) * 100) : 0;
     const maxPick = Math.max(1, Math.min(10, d.pending.length));
     const savedCount = Math.max(1, Math.min(maxPick, Number(communityPixelCountByDesign[d.id]) || 1));
+    const isPinned = pinnedDesignIds.includes(d.id);
     return `
-      <div class="mini-card">
+      <div class="mini-card${isPinned ? " pinned" : ""}">
         <div class="mini-card-header">
           <canvas class="mini-card-thumb" data-thumb-id="${d.id}"></canvas>
           <span class="mini-card-name" title="${escapeHtml(d.name || "(untitled)")}">${escapeHtml(d.name || "(untitled)")}</span>
+          <button type="button" class="mini-pin-btn${isPinned ? " pinned" : ""}" data-pin-id="${d.id}"
+            title="${isPinned ? "Unpin" : "Pin to top"}" aria-label="${isPinned ? "Unpin" : "Pin to top"}">📌</button>
         </div>
         <div class="mini-progress-wrap"><div class="mini-progress-fill" style="width:${pct}%"></div></div>
         <div class="mini-card-meta">${d.done} / ${d.pixels.length} placed</div>
@@ -1781,6 +1876,9 @@ function renderCommunityListDom() {
     canvas.addEventListener("mouseenter", (e) => showThumbHoverPreview(canvas.dataset.thumbId, e));
     canvas.addEventListener("mousemove", positionThumbHoverPreview);
     canvas.addEventListener("mouseleave", hideThumbHoverPreview);
+  });
+  list.querySelectorAll(".mini-pin-btn").forEach((btn) => {
+    btn.addEventListener("click", () => togglePinDesign(btn.dataset.pinId));
   });
   list.querySelectorAll(".community-help-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
