@@ -3325,6 +3325,55 @@ const SUGGESTIONS_ADDRESS = "g1hxsz6mnhjx2n75xr2vpe6tytdk8jj4p49gcsug";
 const SUGGEST_MEMO_PREFIX = "gnopx:suggest:";
 const SUGGESTION_SEND_AMOUNT = "1ugnot";
 
+// Same caching idea as Board Evolution's own cache (see its comment) --
+// this collector address is shared across every sibling project (see the
+// comment above SUGGESTIONS_ADDRESS), so an UNBOUNDED getTransactions query
+// (no block_height range) has to scan every BankMsgSend to it across the
+// whole chain's history to find this project's handful of matches.
+// Confirmed live: that unbounded scan took ~10-12s even though it found
+// exactly one match. Caching the resolved list + a height watermark means
+// only the very first ever load pays that cost -- every load after only
+// scans the small range since the last cached height.
+const SUGGESTIONS_CACHE_KEY = "gnoPixelsSuggestionsCache_v1";
+
+function loadSuggestionsCache() {
+  try {
+    const cache = JSON.parse(localStorage.getItem(SUGGESTIONS_CACHE_KEY) || "null");
+    if (!cache || cache.toAddress !== SUGGESTIONS_ADDRESS || !Array.isArray(cache.rows) || !Number.isFinite(cache.atHeight)) return null;
+    return cache;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveSuggestionsCache(atHeight, rows) {
+  try {
+    localStorage.setItem(SUGGESTIONS_CACHE_KEY, JSON.stringify({ toAddress: SUGGESTIONS_ADDRESS, atHeight, rows }));
+  } catch (err) {
+    // Quota exceeded or storage unavailable -- caching is purely a speed
+    // optimization, safe to just skip it.
+  }
+}
+
+function suggestionsQuery(fromHeight) {
+  // Same gt:-1-on-the-first-chunk fix as boardCallsQuery (see its own
+  // comment) -- clamps to 0 so a fresh cache's fromHeight of 0 can't
+  // accidentally silently return zero results on this indexer.
+  const heightFilter = fromHeight != null ? `block_height: { gt: ${Math.max(0, fromHeight - 1)} },` : "";
+  return `query {
+    getTransactions(where: {
+      success: { eq: true },
+      ${heightFilter}
+      messages: { value: { BankMsgSend: { to_address: { eq: "${SUGGESTIONS_ADDRESS}" } } } }
+    }) {
+      hash
+      block_height
+      memo
+      messages { value { ... on BankMsgSend { from_address to_address } } }
+    }
+  }`;
+}
+
 async function loadSuggestions() {
   const statusEl = document.getElementById("suggestionsStatus");
   const listEl = document.getElementById("suggestionsList");
@@ -3333,20 +3382,12 @@ async function loadSuggestions() {
     // The indexer's `like` filtering isn't reliable, so (same approach
     // gno.observer's own suggestions use) fetch every send to the
     // collector address and filter by memo prefix client-side instead.
-    const query = `query {
-      getTransactions(where: {
-        success: { eq: true },
-        messages: { value: { BankMsgSend: { to_address: { eq: "${SUGGESTIONS_ADDRESS}" } } } }
-      }) {
-        hash
-        block_height
-        memo
-        messages { value { ... on BankMsgSend { from_address to_address } } }
-      }
-    }`;
-    const data = await indexerGraphqlQuery(query);
-    const txs = data.getTransactions || [];
-    const rows = [];
+    const cache = loadSuggestionsCache();
+    const { latestBlockHeight } = await indexerGraphqlQuery("query { latestBlockHeight }");
+    const txs = cache && cache.atHeight >= latestBlockHeight
+      ? []
+      : (await indexerGraphqlQuery(suggestionsQuery(cache ? cache.atHeight + 1 : null))).getTransactions || [];
+    const newRows = [];
     for (const tx of txs) {
       const memo = tx.memo || "";
       if (!memo.startsWith(SUGGEST_MEMO_PREFIX)) continue;
@@ -3354,16 +3395,18 @@ async function loadSuggestions() {
       const from = msg && msg.value && msg.value.from_address;
       const text = memo.slice(SUGGEST_MEMO_PREFIX.length).trim();
       if (!from || !text) continue;
-      rows.push({ hash: tx.hash, text, from, blockHeight: tx.block_height });
+      newRows.push({ hash: tx.hash, text, from, blockHeight: tx.block_height });
     }
-    rows.sort((a, b) => b.blockHeight - a.blockHeight); // newest first
-    if (!rows.length) {
+    const rows = cache ? cache.rows.concat(newRows) : newRows;
+    saveSuggestionsCache(latestBlockHeight, rows);
+    const sorted = rows.slice().sort((a, b) => b.blockHeight - a.blockHeight); // newest first
+    if (!sorted.length) {
       statusEl.textContent = "No suggestions yet — be the first.";
       listEl.innerHTML = "";
       return;
     }
-    statusEl.textContent = `${rows.length} suggestion(s).`;
-    listEl.innerHTML = rows.map((r) => `
+    statusEl.textContent = `${sorted.length} suggestion(s).`;
+    listEl.innerHTML = sorted.map((r) => `
       <div class="suggestion-card">
         <div>${escapeHtml(r.text)}</div>
         <div class="suggestion-meta">by ${r.from.slice(0, 6)}…${r.from.slice(-4)} · block ${r.blockHeight}</div>
