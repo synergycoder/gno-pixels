@@ -913,6 +913,77 @@ function parsePlacedBy(raw) {
   return { addr, height: heightMatch ? Number(heightMatch[1]) : null };
 }
 
+// ---------- gno.land name resolution (r/sys/users) ----------
+// Same registry + read API as the sibling gnoland-name-service project
+// (see ~/gno-land-dev-notes.md's 2026-08-11 entries, reference impl
+// gnoland-name-service/index.html) -- ResolveAddress(g1...) returns a
+// single-line *UserData (or "(nil *...)" if unregistered); reused
+// verbatim here rather than rediscovering the response shape.
+const USERS_REALM_PATH = "gno.land/r/sys/users";
+
+// addr -> name string, or null if confirmed unregistered. Persisted since
+// name registrations essentially never change and this is looked up for
+// every leaderboard row on every 8s poll (loadLeaderboard) -- without this,
+// that's a fresh RPC round-trip per address per poll, for data that's
+// almost always the same answer as last time. Negative results (null) are
+// cached too, since most addresses on a testnet pixel board won't have a
+// registered name at all, and re-querying "still nothing" every 8s is just
+// as wasteful as re-querying a real name would be.
+const NAME_CACHE_KEY = "gnoPixelsNameCache_v1";
+let nameCache = null;
+
+function getNameCache() {
+  if (nameCache) return nameCache;
+  try {
+    nameCache = new Map(Object.entries(JSON.parse(localStorage.getItem(NAME_CACHE_KEY) || "{}")));
+  } catch (err) {
+    nameCache = new Map();
+  }
+  return nameCache;
+}
+
+function saveNameCache() {
+  try {
+    localStorage.setItem(NAME_CACHE_KEY, JSON.stringify(Object.fromEntries(nameCache)));
+  } catch (err) {
+    // Quota exceeded or storage unavailable -- caching is purely a speed
+    // optimization, safe to just skip it.
+  }
+}
+
+// `(nil *gno.land/r/sys/users.UserData)` for an unregistered address, or a
+// single line `(&(struct{("g1..." .uverse.address),("name" string),(false
+// bool)} ...UserData) *...UserData)` for one that is -- verified live
+// against both a registered and an unregistered address on sapphire-1.
+function parseUserName(raw) {
+  const trimmed = (raw || "").trim();
+  if (!trimmed || /^\(nil\b/.test(trimmed)) return null;
+  const m = /"([^"]*)"\s+string\)/.exec(trimmed);
+  return m ? m[1] : null;
+}
+
+async function resolveDisplayName(addr) {
+  const cache = getNameCache();
+  if (cache.has(addr)) return cache.get(addr);
+  let name = null;
+  try {
+    const raw = await abciQuery("vm/qeval", USERS_REALM_PATH + `.ResolveAddress(${JSON.stringify(addr)})`);
+    name = parseUserName(raw);
+  } catch (err) {
+    // Resolution failures (registry temporarily unreachable, etc.)
+    // shouldn't block showing the address itself, and shouldn't be
+    // cached as "no name" -- a later attempt might still succeed.
+    return null;
+  }
+  cache.set(addr, name);
+  saveNameCache();
+  return name;
+}
+
+function shortAddr(addr) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
 // ---------- Adena wallet ----------
 let connectedAddress = null;
 let adenaAvailable = null; // null = not checked yet, true/false once known
@@ -1181,9 +1252,21 @@ async function showPlacedBy(x, y, coordReadout, clientX, clientY) {
   try {
     const raw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + `.PlacedBy(${x},${y})`);
     const { addr, height } = parsePlacedBy(raw);
-    setText(addr
-      ? `x:${x} y:${y} — placed by ${addr.slice(0, 6)}…${addr.slice(-4)} at height ${height}`
-      : `x:${x} y:${y} — not placed yet`);
+    if (!addr) {
+      setText(`x:${x} y:${y} — not placed yet`);
+    } else {
+      setText(`x:${x} y:${y} — placed by ${shortAddr(addr)} at height ${height}`);
+      // Upgrades to "placed by name (short address)" if this address has a
+      // registered gno.land name -- only if the overlay is still showing
+      // THIS cell's result (the 5s auto-hide below only starts once this
+      // whole try block finishes, so a quick resolveDisplayName cache hit
+      // never gets stomped by it, but a slower first-ever lookup could
+      // otherwise land after the user's already moved on).
+      const name = await resolveDisplayName(addr);
+      if (name && coordReadout.textContent.startsWith(`x:${x} y:${y}`)) {
+        setText(`x:${x} y:${y} — placed by ${name} (${shortAddr(addr)}) at height ${height}`);
+      }
+    }
   } catch (err) {
     setText(`x:${x} y:${y} — lookup failed: ${err.message}`);
   }
@@ -1709,10 +1792,26 @@ async function loadLeaderboard() {
     el.innerHTML = rows.map((r, i) => `
       <li>
         <span class="rank">${i + 1}</span>
-        <span class="addr" title="${r.addr}">${r.addr.slice(0, 6)}…${r.addr.slice(-4)}</span>
+        <span class="addr" title="${r.addr}">${shortAddr(r.addr)}</span>
         <span class="count">${r.count}</span>
       </li>
     `).join("");
+    // Rendered with plain short addresses first (near-instant, no RPC wait)
+    // then progressively upgraded to "name (short address)" as each
+    // resolves -- almost always instant itself too, since resolveDisplayName
+    // caches, but doesn't block the leaderboard's own render on a registry
+    // lookup the very first time. Reads the span back out by position
+    // rather than an id, and checks isConnected, so a stale resolution from
+    // a since-replaced render (this reloads every 8s) can't patch the
+    // wrong row.
+    const addrEls = el.querySelectorAll(".addr");
+    rows.forEach((r, i) => {
+      resolveDisplayName(r.addr).then((name) => {
+        if (!name) return;
+        const span = addrEls[i];
+        if (span && span.isConnected) span.textContent = `${name} (${shortAddr(r.addr)})`;
+      });
+    });
   } catch (err) {
     el.innerHTML = `<li class="muted">Leaderboard needs the next realm update.</li>`;
   }
