@@ -1358,12 +1358,12 @@ function applyPixelWrite(dense, w, h, minX, minY, x, y, colorIndex) {
 // single query from "fine" into "routinely times out", confirmed live
 // while investigating a page-stuck-loading report), grows back after a
 // run of successes.
-async function fetchBoardCallsChunked(func, latestHeight) {
+async function fetchBoardCallsChunked(func, latestHeight, fromHeight = 0) {
   const calls = [];
   let chunkSize = 50000;
   const minChunk = 500;
   let consecutiveOk = 0;
-  let from = 0;
+  let from = fromHeight;
   while (from <= latestHeight) {
     const to = Math.min(from + chunkSize - 1, latestHeight);
     let data;
@@ -1392,14 +1392,42 @@ async function fetchBoardCallsChunked(func, latestHeight) {
   return calls;
 }
 
+// data/board-snapshot.json (scripts/snapshot-board.mjs, run daily) reads
+// every cell directly via RPC PlacedBy/GetPixel -- it is NOT built from the
+// indexer and so is immune to the indexer's own confirmed data gaps (e.g.
+// block 127072 returning nothing for a filterless query -- a genuine hole
+// in the indexer's own data, not a client-side bug). Using it as a base
+// layer and only replaying indexer events for heights after its atHeight
+// watermark fixes those gaps (the backup already has the correct color for
+// any cell the indexer can't see) and is a much smaller/faster query than
+// replaying the full history from block 0 on every page load. Falls back
+// to the old full-replay-from-genesis behavior if the backup is missing,
+// unparseable, or stamped for a different realm (e.g. this same page later
+// pointed at a migrated/new pkgPath).
 async function buildSnapshotFromIndexer(w, h, minX, minY) {
   const dense = new Array(w * h).fill("0");
+  let sinceHeight = 0;
+  try {
+    const res = await fetch("/data/board-snapshot.json", { signal: AbortSignal.timeout(15000) });
+    if (res.ok) {
+      const backup = await res.json();
+      if (backup.pkgPath === PIXEL_REALM_PATH && Number.isFinite(backup.atHeight)) {
+        for (const p of backup.pixels || []) {
+          applyPixelWrite(dense, w, h, minX, minY, p.x, p.y, p.c);
+        }
+        sinceHeight = backup.atHeight + 1;
+      }
+    }
+  } catch (err) {
+    // fetch/parse failure -- sinceHeight stays 0, falling through to a full
+    // replay from genesis below, same as before this optimization existed
+  }
   // fetchAllPixelEvents (see its own comment, near the Evolution feature
   // below) flattens the same three replay funcs into individual pixel-
   // write events already in correct chronological order -- only state
   // reconstruction needed here, not each individual step, so just apply
   // every event in sequence.
-  for (const [x, y, c] of await fetchAllPixelEvents()) {
+  for (const [x, y, c] of await fetchAllPixelEvents(sinceHeight)) {
     applyPixelWrite(dense, w, h, minX, minY, x, y, c);
   }
   return dense.join("");
@@ -2889,10 +2917,11 @@ const EVOLUTION_CELL_PX = 4; // matches generate-evolution-gif.py's own CELL_PX
 // which only cares about final state and can treat a whole batch as one
 // step). buildSnapshotFromIndexer is rewritten below to build on top of
 // this instead of duplicating the same fetch+flatten logic.
-async function fetchAllPixelEvents() {
+async function fetchAllPixelEvents(sinceHeight = 0) {
   const { latestBlockHeight } = await indexerGraphqlQuery("query { latestBlockHeight }");
+  if (sinceHeight > latestBlockHeight) return [];
   const perFunc = await Promise.all(
-    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight))
+    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight, sinceHeight))
   );
   const calls = perFunc.flat();
   calls.sort((a, b) => a.height - b.height || a.index - b.index);

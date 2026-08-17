@@ -134,6 +134,32 @@ async function fetchColor(x, y) {
   return c;
 }
 
+// The chain height this snapshot was taken at — lets a consumer (the live
+// site) treat this JSON as an authoritative base layer and only replay
+// indexer events for heights AFTER this one, instead of the indexer's full
+// history from block 0 (which is both slow and, per the indexer's own
+// confirmed data gaps, occasionally wrong). Uses /status, a plain
+// Tendermint/CometBFT RPC endpoint (not abci_query), so it needs its own
+// fallback loop; the official endpoint 403s on /status specifically even
+// though every other path on it works fine, so this can't skip that.
+async function fetchLatestHeight() {
+  let lastErr;
+  for (const rpcUrl of RPC_URLS) {
+    try {
+      const res = await fetch(`${rpcUrl}/status`, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const height = Number(json.result?.sync_info?.latest_block_height);
+      if (Number.isFinite(height) && height > 0) return height;
+      throw new Error("missing/invalid latest_block_height in response");
+    } catch (err) {
+      lastErr = err;
+      // fall through to the next endpoint
+    }
+  }
+  throw new Error(`All ${RPC_URLS.length} RPC endpoints failed for /status: ${lastErr.message}`);
+}
+
 async function fetchCommunityDesigns() {
   const csv = parseGnoString(await abciQueryEval("ListCommunityDesigns()")) || "";
   if (!csv) return [];
@@ -150,6 +176,14 @@ async function fetchCommunityDesigns() {
 
 async function main() {
   console.log(`=== snapshotting ${PKG_PATH} ===`);
+
+  // Captured BEFORE the sweep starts (which takes a while — thousands of
+  // RPC round-trips): a lower bound on every cell read below is exactly
+  // what a consumer replaying "everything since atHeight" needs, since it
+  // guarantees no write that happened during the sweep itself gets missed
+  // by both this snapshot AND the catch-up replay.
+  const atHeight = await fetchLatestHeight();
+  console.log(`chain height at snapshot start: ${atHeight}`);
 
   const bounds = await fetchBounds();
   const allCells = [];
@@ -175,6 +209,7 @@ async function main() {
 
   const output = {
     generatedAt: new Date().toISOString(),
+    atHeight,
     pkgPath: PKG_PATH,
     bounds,
     pixels: withProvenance,
