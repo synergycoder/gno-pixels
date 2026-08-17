@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-17T02:39:36.387Z",
-  "atHeight": 217106,
+  "generatedAt": "2026-08-17T08:35:54.272Z",
+  "atHeight": 222930,
   "pkgPath": "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels",
   "bounds": {
     "minX": -32,
@@ -18862,6 +18862,13 @@
     },
     {
       "x": 63,
+      "y": -20,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219791,
+      "c": 6
+    },
+    {
+      "x": 63,
       "y": -6,
       "placer": "g1zzr0xsuh4msmz6e55q9tp3yq6fu63at54lr8qu",
       "height": 60718,
@@ -21942,9 +21949,23 @@
     },
     {
       "x": 74,
+      "y": -5,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
+      "c": 7
+    },
+    {
+      "x": 74,
       "y": -2,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215382,
+      "c": 7
+    },
+    {
+      "x": 74,
+      "y": -1,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
       "c": 7
     },
     {
@@ -22239,6 +22260,13 @@
       "y": -4,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 210696,
+      "c": 7
+    },
+    {
+      "x": 75,
+      "y": -1,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
       "c": 7
     },
     {
@@ -22740,6 +22768,13 @@
     },
     {
       "x": 77,
+      "y": -2,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
+      "c": 7
+    },
+    {
+      "x": 77,
       "y": -1,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215733,
@@ -22750,6 +22785,13 @@
       "y": 0,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 211377,
+      "c": 7
+    },
+    {
+      "x": 77,
+      "y": 1,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
       "c": 7
     },
     {
@@ -23090,6 +23132,13 @@
     },
     {
       "x": 79,
+      "y": -6,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 7
+    },
+    {
+      "x": 79,
       "y": -5,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215371,
@@ -23100,6 +23149,13 @@
       "y": -2,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215371,
+      "c": 7
+    },
+    {
+      "x": 79,
+      "y": -1,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
       "c": 7
     },
     {
@@ -23328,9 +23384,23 @@
     },
     {
       "x": 80,
+      "y": -4,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 7
+    },
+    {
+      "x": 80,
       "y": -2,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215382,
+      "c": 7
+    },
+    {
+      "x": 80,
+      "y": 0,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
       "c": 7
     },
     {
@@ -24372,9 +24442,16 @@
     {
       "x": 84,
       "y": -2,
-      "placer": "g1zzr0xsuh4msmz6e55q9tp3yq6fu63at54lr8qu",
-      "height": 60053,
-      "c": 6
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
+      "c": 7
+    },
+    {
+      "x": 84,
+      "y": -1,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 7
     },
     {
       "x": 84,
@@ -24644,6 +24721,13 @@
     },
     {
       "x": 85,
+      "y": -6,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218664,
+      "c": 7
+    },
+    {
+      "x": 85,
       "y": -2,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 210432,
@@ -24896,9 +24980,23 @@
     },
     {
       "x": 87,
+      "y": -8,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 7
+    },
+    {
+      "x": 87,
       "y": -7,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215380,
+      "c": 7
+    },
+    {
+      "x": 87,
+      "y": -6,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
       "c": 7
     },
     {
@@ -24910,6 +25008,13 @@
     },
     {
       "x": 87,
+      "y": -4,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
+      "c": 7
+    },
+    {
+      "x": 87,
       "y": 0,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215382,
@@ -24917,10 +25022,45 @@
     },
     {
       "x": 87,
+      "y": 49,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 219249,
+      "c": 3
+    },
+    {
+      "x": 87,
       "y": 58,
       "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
       "height": 120491,
       "c": 8
+    },
+    {
+      "x": 87,
+      "y": 69,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 1
+    },
+    {
+      "x": 87,
+      "y": 70,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 1
+    },
+    {
+      "x": 87,
+      "y": 71,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 1
+    },
+    {
+      "x": 87,
+      "y": 72,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 1
     },
     {
       "x": 87,
@@ -25050,6 +25190,48 @@
     },
     {
       "x": 88,
+      "y": 68,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 1
+    },
+    {
+      "x": 88,
+      "y": 69,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
+      "x": 88,
+      "y": 70,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 5
+    },
+    {
+      "x": 88,
+      "y": 71,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 5
+    },
+    {
+      "x": 88,
+      "y": 72,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 5
+    },
+    {
+      "x": 88,
+      "y": 73,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 1
+    },
+    {
+      "x": 88,
       "y": 78,
       "placer": "g1q7tn3yp0aux44z6nqefdv6wx788w8dyyl60aqk",
       "height": 61297,
@@ -25155,6 +25337,13 @@
     },
     {
       "x": 89,
+      "y": -2,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 8
+    },
+    {
+      "x": 89,
       "y": -1,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 211377,
@@ -25180,6 +25369,62 @@
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 210696,
       "c": 8
+    },
+    {
+      "x": 89,
+      "y": 67,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 1
+    },
+    {
+      "x": 89,
+      "y": 68,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 5
+    },
+    {
+      "x": 89,
+      "y": 69,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 1
+    },
+    {
+      "x": 89,
+      "y": 70,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 1
+    },
+    {
+      "x": 89,
+      "y": 71,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 1
+    },
+    {
+      "x": 89,
+      "y": 72,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 1
+    },
+    {
+      "x": 89,
+      "y": 73,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
+    },
+    {
+      "x": 89,
+      "y": 74,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 5
     },
     {
       "x": 89,
@@ -25267,6 +25512,69 @@
     },
     {
       "x": 90,
+      "y": 0,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 1
+    },
+    {
+      "x": 90,
+      "y": 1,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218519,
+      "c": 8
+    },
+    {
+      "x": 90,
+      "y": 67,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 1
+    },
+    {
+      "x": 90,
+      "y": 68,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
+    },
+    {
+      "x": 90,
+      "y": 69,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 1
+    },
+    {
+      "x": 90,
+      "y": 70,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
+      "x": 90,
+      "y": 71,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 5
+    },
+    {
+      "x": 90,
+      "y": 73,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
+      "x": 90,
+      "y": 74,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 5
+    },
+    {
+      "x": 90,
       "y": 81,
       "placer": "g1q7tn3yp0aux44z6nqefdv6wx788w8dyyl60aqk",
       "height": 61228,
@@ -25295,6 +25603,13 @@
     },
     {
       "x": 91,
+      "y": -8,
+      "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
+      "height": 218548,
+      "c": 7
+    },
+    {
+      "x": 91,
       "y": -5,
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 215382,
@@ -25306,6 +25621,34 @@
       "placer": "g17cjym5e9hhws46lt6329pv2gtx2ay0503hgems",
       "height": 210432,
       "c": 8
+    },
+    {
+      "x": 91,
+      "y": 67,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 1
+    },
+    {
+      "x": 91,
+      "y": 68,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 5
+    },
+    {
+      "x": 91,
+      "y": 73,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
+      "x": 91,
+      "y": 74,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 5
     },
     {
       "x": 92,
@@ -25336,6 +25679,48 @@
       "c": 8
     },
     {
+      "x": 92,
+      "y": 68,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
+    },
+    {
+      "x": 92,
+      "y": 69,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
+      "x": 92,
+      "y": 70,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
+    },
+    {
+      "x": 92,
+      "y": 71,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219794,
+      "c": 5
+    },
+    {
+      "x": 92,
+      "y": 72,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
+    },
+    {
+      "x": 92,
+      "y": 73,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
       "x": 93,
       "y": -30,
       "placer": "g1y9a5mwfjx360x2wd92fcdlhcdcpua0hhh6le83",
@@ -25355,6 +25740,34 @@
       "placer": "g1rq7kv0d2ph96j3sv55a0n6p353x3qey5ud9als",
       "height": 54925,
       "c": 8
+    },
+    {
+      "x": 93,
+      "y": 69,
+      "placer": "g198mxzjqsfflcckfgm9yu5d586z88vt67t9tard",
+      "height": 219805,
+      "c": 5
+    },
+    {
+      "x": 93,
+      "y": 70,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
+    },
+    {
+      "x": 93,
+      "y": 71,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219609,
+      "c": 5
+    },
+    {
+      "x": 93,
+      "y": 72,
+      "placer": "g1lyuc4zhnmd7dkdvt02fmzq9q0drqmgtn2t00ls",
+      "height": 219614,
+      "c": 5
     }
   ],
   "communityDesigns": [
@@ -38044,6 +38457,208 @@
           89,
           2,
           8
+        ]
+      ]
+    },
+    {
+      "id": "d20",
+      "name": "Mario's coin",
+      "count": 39,
+      "pixels": [
+        [
+          89,
+          67,
+          1
+        ],
+        [
+          90,
+          67,
+          1
+        ],
+        [
+          91,
+          67,
+          1
+        ],
+        [
+          88,
+          68,
+          1
+        ],
+        [
+          89,
+          68,
+          5
+        ],
+        [
+          90,
+          68,
+          5
+        ],
+        [
+          91,
+          68,
+          5
+        ],
+        [
+          92,
+          68,
+          5
+        ],
+        [
+          87,
+          69,
+          1
+        ],
+        [
+          88,
+          69,
+          5
+        ],
+        [
+          89,
+          69,
+          1
+        ],
+        [
+          90,
+          69,
+          1
+        ],
+        [
+          92,
+          69,
+          5
+        ],
+        [
+          93,
+          69,
+          5
+        ],
+        [
+          87,
+          70,
+          1
+        ],
+        [
+          88,
+          70,
+          5
+        ],
+        [
+          89,
+          70,
+          1
+        ],
+        [
+          90,
+          70,
+          5
+        ],
+        [
+          92,
+          70,
+          5
+        ],
+        [
+          93,
+          70,
+          5
+        ],
+        [
+          87,
+          71,
+          1
+        ],
+        [
+          88,
+          71,
+          5
+        ],
+        [
+          89,
+          71,
+          1
+        ],
+        [
+          90,
+          71,
+          5
+        ],
+        [
+          92,
+          71,
+          5
+        ],
+        [
+          93,
+          71,
+          5
+        ],
+        [
+          87,
+          72,
+          1
+        ],
+        [
+          88,
+          72,
+          5
+        ],
+        [
+          89,
+          72,
+          1
+        ],
+        [
+          92,
+          72,
+          5
+        ],
+        [
+          93,
+          72,
+          5
+        ],
+        [
+          88,
+          73,
+          1
+        ],
+        [
+          89,
+          73,
+          5
+        ],
+        [
+          90,
+          73,
+          5
+        ],
+        [
+          91,
+          73,
+          5
+        ],
+        [
+          92,
+          73,
+          5
+        ],
+        [
+          89,
+          74,
+          5
+        ],
+        [
+          90,
+          74,
+          5
+        ],
+        [
+          91,
+          74,
+          5
         ]
       ]
     }
