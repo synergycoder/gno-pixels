@@ -203,6 +203,19 @@
   .side-cta-btn:hover { background: var(--border-soft); border-color: var(--accent); }
   .side-cta-btn:disabled { opacity: 0.5; cursor: default; }
   .side-cta-btn:disabled:hover { background: none; border-color: var(--border); }
+  /* Same attention-pulse language as .adena-btn's own (see adena-attract
+     above) -- only while the button is actually clickable (loadCustomCanvasConfig()
+     starts it disabled until the realm confirms it supports this feature), and
+     paused on hover so it doesn't fight the hover state above. */
+  @keyframes custom-canvas-attract {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(130,116,239,0.5), 0 0 8px 1px rgba(130,116,239,0.55); border-color: var(--accent); border-style: solid; }
+    50% { box-shadow: 0 0 0 7px rgba(130,116,239,0), 0 0 22px 6px rgba(130,116,239,0.95); border-color: #a78bfa; border-style: solid; }
+  }
+  #navCustomCanvas:not(:disabled) { animation: custom-canvas-attract 1.8s ease-in-out infinite; }
+  #navCustomCanvas:not(:disabled):hover { animation-play-state: paused; }
+  @media (prefers-reduced-motion: reduce) {
+    #navCustomCanvas:not(:disabled) { animation: none; box-shadow: 0 0 10px 2px rgba(130,116,239,0.6); border-color: var(--accent); border-style: solid; }
+  }
 
   .community-list { display: flex; flex-direction: column; gap: 0.6rem; max-height: 60vh; overflow-y: auto; }
 
