@@ -670,37 +670,52 @@ const NET = {
   indexerUrl: "https://indexer.sapphire.testnets.gno.land/graphql/query",
 };
 
+// There's no second public indexer to fall back to the way abciQuery falls
+// back across RPC endpoints -- checked live: none of NET.rpcUrls' community
+// operators run a GraphQL indexer at all (every indexer path 404s; their
+// root path answers as a plain JSON-RPC node, confirming they're RPC-only).
+// So instead of a different endpoint, this retries the SAME one a couple of
+// times with a short backoff before giving up -- every connectivity failure
+// against this indexer observed this session (including one live, while
+// investigating the exact "Couldn't reach the indexer" report this fixes)
+// has been transient, gone again within seconds.
 async function indexerGraphqlQuery(query, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let res;
-  try {
-    res = await fetch(NET.indexerUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err.name === "AbortError") throw new Error(`Indexer query timed out after ${timeoutMs / 1000}s`);
-    // Same gap as abciQuery had before its own fix: this had no try/catch
-    // around the fetch at all, so a raw "Failed to fetch" (or anything
-    // else) propagated straight through with zero conversion. Caught live:
-    // this is what was actually behind the page getting stuck showing
-    // "hasn't been deployed yet" during a real indexer hiccup -- the
-    // catch-all in loadCanvas() only recognized abciQuery's own connectivity
-    // messages, so an indexer failure (a completely different endpoint)
-    // fell through to the wrong branch every time, no exceptions.
-    if (err instanceof TypeError) {
-      throw new Error(`Couldn't reach the indexer (${NET.indexerUrl}) — it isn't responding right now. This is usually temporary; try again in a moment.`);
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt)); // 2s, then 4s
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(NET.indexerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === "AbortError") { lastErr = new Error(`Indexer query timed out after ${timeoutMs / 1000}s`); continue; }
+      // Same gap as abciQuery had before its own fix: this had no try/catch
+      // around the fetch at all, so a raw "Failed to fetch" (or anything
+      // else) propagated straight through with zero conversion. Caught
+      // live: this is what was actually behind the page getting stuck
+      // showing "hasn't been deployed yet" during a real indexer hiccup --
+      // the catch-all in loadCanvas() only recognized abciQuery's own
+      // connectivity messages, so an indexer failure (a completely
+      // different endpoint) fell through to the wrong branch every time.
+      if (err instanceof TypeError) {
+        lastErr = new Error(`Couldn't reach the indexer (${NET.indexerUrl}) — it isn't responding right now. This is usually temporary; try again in a moment.`);
+        continue;
+      }
+      throw err; // not connectivity-shaped -- retrying won't change the answer
     }
-    throw err;
-  } finally {
     clearTimeout(timer);
+    const json = await res.json();
+    if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; ")); // a real GraphQL error, not connectivity -- same on every retry
+    return json.data;
   }
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
-  return json.data;
+  throw lastErr;
 }
 // Practice/scratch realm name -- deliberately NOT the final intended name,
 // so early iteration (redeploying while the design is still changing)
