@@ -1252,7 +1252,20 @@ document.getElementById("helpPixelCount").addEventListener("keydown", (e) => {
 const INDEXER_REPLAY_FUNCS = ["SetPixel", "SetPixels", "ImportHistoricalPixel"];
 
 function boardCallsQuery(func, fromHeight, toHeight) {
-  const heightFilter = fromHeight != null ? `block_height: { gt: ${fromHeight - 1}, lt: ${toHeight + 1} },` : "";
+  // gt: -1 (what fromHeight - 1 evaluates to for the very first chunk,
+  // where fromHeight is 0) silently returns ZERO results on this indexer
+  // when combined with the messages/MsgCall filter below -- no error, just
+  // an empty (correctly-shaped) response, indistinguishable from "this
+  // range genuinely has no matches". Confirmed directly: gt: -1 vs gt: 0
+  // for the IDENTICAL range and filter, gt: 0 finds the real matches, gt:
+  // -1 finds none. This silently dropped the entire first chunk of every
+  // replay func's history on every page load -- reproduced live via a
+  // user's own placed pixel rendering with the wrong color because its
+  // ImportHistoricalPixel call (in that first chunk) never made it into
+  // the replay at all. Clamping to a minimum of 0 avoids the negative
+  // value entirely; block heights are never 0 or negative in practice, so
+  // this doesn't lose any real range.
+  const heightFilter = fromHeight != null ? `block_height: { gt: ${Math.max(0, fromHeight - 1)}, lt: ${toHeight + 1} },` : "";
   return `query {
     getTransactions(
       where: {
