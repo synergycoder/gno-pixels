@@ -342,6 +342,17 @@
   }
   .secondary-btn:hover { background: var(--border-soft); border-color: var(--accent); }
   .secondary-btn:disabled { opacity: 0.5; cursor: default; }
+  .evolution-canvas {
+    image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px;
+    max-width: 100%; display: block; margin: 1rem auto; background: #000;
+  }
+  .evolution-controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .evolution-controls input[type="range"] { flex: 1; min-width: 120px; }
+  .evolution-frame-counter { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .evolution-controls select {
+    padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-elevated); color: var(--text); font-family: inherit; font-size: 0.8rem;
+  }
   .layer-item {
     display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
     padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; margin: 0.4rem 0; font-size: 0.85rem;
@@ -375,6 +386,7 @@
       <button type="button" class="header-nav-link" id="navAbout" title="What is GNO Pixels? Click to open.">ℹ️ About</button>
       <button type="button" class="header-nav-link" id="navLeaderboard" title="See who's placed the most pixels on the board. Click to open.">🏆 Top contributors</button>
       <button type="button" class="header-nav-link" id="navSuggestions" title="Suggest a feature or change. Click to open.">💡 Suggestions</button>
+      <button type="button" class="header-nav-link" id="navEvolution" title="Watch the board's placement history animate, in the order it actually happened. Click to open.">🎬 Evolution</button>
     </div>
     <div class="site-header-center">
       <h1 id="titleHome" title="Back to center"><img src="gnome-icon.svg" alt="" class="title-icon">GNO Pixels</h1>
@@ -566,6 +578,43 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="evolutionModalBackdrop" style="display:none">
+  <div class="modal" id="evolutionModal">
+    <button class="modal-close" id="evolutionModalClose" type="button" title="Close">✕</button>
+    <h2>🎬 Board Evolution</h2>
+    <p class="modal-hint">Every pixel, replayed in the exact order it was actually placed — reconstructed live from on-chain history. Nothing is precomputed; this is built fresh each time you generate it.</p>
+
+    <div id="evolutionIdle">
+      <button type="button" class="primary-btn" id="evolutionGenerateBtn">Generate animation</button>
+    </div>
+
+    <div id="evolutionProgress" style="display:none">
+      <p class="status" id="evolutionStatusText">Fetching placement history…</p>
+    </div>
+
+    <div id="evolutionPlayer" style="display:none">
+      <canvas class="evolution-canvas" id="evolutionCanvas"></canvas>
+      <div class="evolution-controls">
+        <button type="button" class="secondary-btn" id="evolutionPlayPauseBtn">⏸ Pause</button>
+        <input type="range" id="evolutionScrubber" min="0" value="0" step="1">
+        <span class="evolution-frame-counter" id="evolutionFrameCounter"></span>
+      </div>
+      <div class="evolution-controls" style="margin-top:0.6rem">
+        <label for="evolutionSpeed" style="font-size:0.8rem;color:var(--text-muted)">Speed:</label>
+        <select id="evolutionSpeed">
+          <option value="1">1x</option>
+          <option value="4" selected>4x</option>
+          <option value="16">16x</option>
+          <option value="64">64x</option>
+        </select>
+        <button type="button" class="secondary-btn" id="evolutionRegenerateBtn">↻ Regenerate</button>
+        <button type="button" class="primary-btn" id="evolutionDownloadBtn">⬇ Download GIF</button>
+      </div>
+      <p class="status" id="evolutionDownloadStatus"></p>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="aboutModalBackdrop" style="display:none">
   <div class="modal" id="aboutModal">
     <button class="modal-close" id="aboutModalClose" type="button" title="Close">✕</button>
@@ -643,6 +692,16 @@
 </footer>
 
 <script src="target_pattern.js"></script>
+<script type="module">
+// gifenc.js is vendored as a real ES module (see its own header) -- this
+// site has no build step, so the only way to use it from the rest of the
+// page's plain classic <script> is to bridge its export onto `window`
+// here. GIFEncoder is the only piece actually needed (quantize/
+// applyPalette are for arbitrary photos; this board already has a small,
+// fixed, known palette).
+import { GIFEncoder } from "./gifenc.js";
+window.GIFEncoder = GIFEncoder;
+</script>
 <script>
 // ---------- config ----------
 const NET = {
@@ -1335,28 +1394,13 @@ async function fetchBoardCallsChunked(func, latestHeight) {
 
 async function buildSnapshotFromIndexer(w, h, minX, minY) {
   const dense = new Array(w * h).fill("0");
-  const { latestBlockHeight } = await indexerGraphqlQuery("query { latestBlockHeight }");
-  const perFunc = await Promise.all(
-    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight))
-  );
-  const calls = perFunc.flat();
-  // heightAndIndex ASC already orders each func's own results correctly,
-  // but the three lists still need interleaving with each other.
-  calls.sort((a, b) => a.height - b.height || a.index - b.index);
-  for (const call of calls) {
-    if (call.func === "SetPixel") {
-      const [x, y, c] = call.args.map(Number);
-      applyPixelWrite(dense, w, h, minX, minY, x, y, c);
-    } else if (call.func === "SetPixels") {
-      const entries = (call.args[0] || "").split(";").filter(Boolean);
-      for (const entry of entries) {
-        const [x, y, c] = entry.split(",").map(Number);
-        applyPixelWrite(dense, w, h, minX, minY, x, y, c);
-      }
-    } else if (call.func === "ImportHistoricalPixel") {
-      const [x, y, c] = call.args.slice(0, 3).map(Number);
-      applyPixelWrite(dense, w, h, minX, minY, x, y, c);
-    }
+  // fetchAllPixelEvents (see its own comment, near the Evolution feature
+  // below) flattens the same three replay funcs into individual pixel-
+  // write events already in correct chronological order -- only state
+  // reconstruction needed here, not each individual step, so just apply
+  // every event in sequence.
+  for (const [x, y, c] of await fetchAllPixelEvents()) {
+    applyPixelWrite(dense, w, h, minX, minY, x, y, c);
   }
   return dense.join("");
 }
@@ -2826,6 +2870,308 @@ document.getElementById("leaderboardModalClose").addEventListener("click", close
 document.getElementById("leaderboardModalBackdrop").addEventListener("click", (e) => {
   if (e.target.id === "leaderboardModalBackdrop") closeLeaderboardModal();
 });
+
+// ---------- Board Evolution: animated replay + downloadable GIF ----------
+// Same "reconstruct from the indexer, in order, since Snapshot()/Render()
+// both now exceed the query-time gas ceiling on this board" approach as
+// local-deploy/generate-evolution-gif.py, brought client-side and made
+// on-demand/interactive instead of a one-shot admin-console tool. Nothing
+// here is precomputed or cached -- every open of this modal replays real
+// on-chain history fresh, reusing the same chunked, resilient indexer
+// fetch (fetchBoardCallsChunked) the live board itself now uses.
+
+const EVOLUTION_CELL_PX = 4; // matches generate-evolution-gif.py's own CELL_PX
+
+// Flattens all three replay funcs into one chronologically-ordered list of
+// individual (x, y, colorIndex) pixel WRITES -- a single SetPixels call
+// becomes multiple entries here, one per pixel in that batch, since each
+// is its own event for animation/GIF purposes (unlike buildSnapshotFromIndexer,
+// which only cares about final state and can treat a whole batch as one
+// step). buildSnapshotFromIndexer is rewritten below to build on top of
+// this instead of duplicating the same fetch+flatten logic.
+async function fetchAllPixelEvents() {
+  const { latestBlockHeight } = await indexerGraphqlQuery("query { latestBlockHeight }");
+  const perFunc = await Promise.all(
+    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight))
+  );
+  const calls = perFunc.flat();
+  calls.sort((a, b) => a.height - b.height || a.index - b.index);
+  const events = [];
+  for (const call of calls) {
+    if (call.func === "SetPixel") {
+      const [x, y, c] = call.args.map(Number);
+      events.push([x, y, c]);
+    } else if (call.func === "SetPixels") {
+      const entries = (call.args[0] || "").split(";").filter(Boolean);
+      for (const entry of entries) {
+        const [x, y, c] = entry.split(",").map(Number);
+        events.push([x, y, c]);
+      }
+    } else if (call.func === "ImportHistoricalPixel") {
+      const [x, y, c] = call.args.slice(0, 3).map(Number);
+      events.push([x, y, c]);
+    }
+  }
+  return events;
+}
+
+let evolutionEvents = null; // [[x, y, c], ...] in chronological order
+let evolutionBounds = null; // { minX, minY, w, h } -- the LIVE board's current bounds at generation time
+let evolutionDense = null; // Uint8Array(w*h) -- current frame's board state, colorIndex per cell (0 = paletteColors[0], the board's own "empty" color)
+let evolutionFrameIdx = 0;
+let evolutionPlaying = false;
+let evolutionTimer = null;
+
+function openEvolutionModal() {
+  document.getElementById("evolutionModalBackdrop").style.display = "";
+}
+function closeEvolutionModal() {
+  document.getElementById("evolutionModalBackdrop").style.display = "none";
+  stopEvolutionPlayback();
+}
+document.getElementById("navEvolution").addEventListener("click", openEvolutionModal);
+document.getElementById("evolutionModalClose").addEventListener("click", closeEvolutionModal);
+document.getElementById("evolutionModalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "evolutionModalBackdrop") closeEvolutionModal();
+});
+
+function drawEvolutionCell(ctx, x, y, c) {
+  // Same convention as paintSnapshot(): paletteColors[colorIndex] directly,
+  // including index 0 -- it's already the board's real "empty" color (the
+  // contract's own SetPixel treats 0 as erase-to-that-color), not
+  // something this needs to special-case as literal black itself.
+  ctx.fillStyle = paletteColors[c] || "#000";
+  ctx.fillRect(x * EVOLUTION_CELL_PX, y * EVOLUTION_CELL_PX, EVOLUTION_CELL_PX, EVOLUTION_CELL_PX);
+}
+
+function redrawEvolutionFull() {
+  const canvas = document.getElementById("evolutionCanvas");
+  const ctx = canvas.getContext("2d");
+  const { w, h } = evolutionBounds;
+  for (let i = 0; i < evolutionDense.length; i++) {
+    drawEvolutionCell(ctx, i % w, Math.floor(i / w), evolutionDense[i]);
+  }
+}
+
+function updateEvolutionFrameCounter() {
+  document.getElementById("evolutionFrameCounter").textContent = `${evolutionFrameIdx + 1} / ${evolutionEvents.length}`;
+}
+
+// Recomputes evolutionDense from scratch by replaying events[0..targetIdx]
+// and does a full redraw -- used for scrubbing and initial setup. With
+// ~a few thousand events this replay is fast enough (well under the time a
+// human scrub gesture takes) that there's no need to cache intermediate
+// checkpoints.
+function seekEvolutionTo(targetIdx) {
+  const { w, h, minX, minY } = evolutionBounds;
+  evolutionDense.fill(0);
+  for (let i = 0; i <= targetIdx; i++) {
+    const [x, y, c] = evolutionEvents[i];
+    const lx = x - minX, ly = y - minY;
+    if (lx < 0 || lx >= w || ly < 0 || ly >= h) continue; // board has since expanded past this event's coordinates
+    evolutionDense[ly * w + lx] = c;
+  }
+  evolutionFrameIdx = targetIdx;
+  redrawEvolutionFull();
+  updateEvolutionFrameCounter();
+  document.getElementById("evolutionScrubber").value = String(targetIdx);
+}
+
+// Advances exactly one step forward -- draws only the single changed cell
+// rather than a full redraw, since live playback calls this every tick.
+function stepEvolutionForward() {
+  evolutionFrameIdx++;
+  const [x, y, c] = evolutionEvents[evolutionFrameIdx];
+  const { w, h, minX, minY } = evolutionBounds;
+  const lx = x - minX, ly = y - minY;
+  if (lx >= 0 && lx < w && ly >= 0 && ly < h) {
+    evolutionDense[ly * w + lx] = c;
+    drawEvolutionCell(document.getElementById("evolutionCanvas").getContext("2d"), lx, ly, c);
+  }
+}
+
+function evolutionSpeedMultiplier() {
+  return Number(document.getElementById("evolutionSpeed").value) || 1;
+}
+
+function stopEvolutionPlayback() {
+  if (evolutionTimer) { clearTimeout(evolutionTimer); evolutionTimer = null; }
+  evolutionPlaying = false;
+}
+
+function startEvolutionPlayback() {
+  stopEvolutionPlayback();
+  evolutionPlaying = true;
+  document.getElementById("evolutionPlayPauseBtn").textContent = "⏸ Pause";
+  const tick = () => {
+    if (!evolutionPlaying) return;
+    const speed = evolutionSpeedMultiplier();
+    for (let s = 0; s < speed; s++) {
+      if (evolutionFrameIdx >= evolutionEvents.length - 1) {
+        stopEvolutionPlayback();
+        document.getElementById("evolutionPlayPauseBtn").textContent = "▶ Replay";
+        return;
+      }
+      stepEvolutionForward();
+    }
+    document.getElementById("evolutionScrubber").value = String(evolutionFrameIdx);
+    updateEvolutionFrameCounter();
+    evolutionTimer = setTimeout(tick, 30);
+  };
+  tick();
+}
+
+document.getElementById("evolutionPlayPauseBtn").addEventListener("click", () => {
+  if (evolutionPlaying) {
+    stopEvolutionPlayback();
+    document.getElementById("evolutionPlayPauseBtn").textContent = "▶ Play";
+  } else {
+    if (evolutionFrameIdx >= evolutionEvents.length - 1) seekEvolutionTo(0);
+    startEvolutionPlayback();
+  }
+});
+document.getElementById("evolutionScrubber").addEventListener("input", (e) => {
+  stopEvolutionPlayback();
+  document.getElementById("evolutionPlayPauseBtn").textContent = "▶ Play";
+  seekEvolutionTo(Number(e.target.value));
+});
+
+async function generateEvolution() {
+  stopEvolutionPlayback();
+  document.getElementById("evolutionIdle").style.display = "none";
+  document.getElementById("evolutionPlayer").style.display = "none";
+  document.getElementById("evolutionDownloadStatus").textContent = "";
+  const progressEl = document.getElementById("evolutionProgress");
+  const statusText = document.getElementById("evolutionStatusText");
+  progressEl.style.display = "";
+  statusText.textContent = "Fetching placement history from the indexer…";
+  try {
+    // Reuses the live board's own already-resolved bounds/palette
+    // (originX/originY/gridWidth/gridHeight/paletteColors) rather than
+    // re-fetching them -- the nav button that opens this modal lives in
+    // the same page as the already-loaded board, so these are populated
+    // by the time anyone can reach here.
+    const events = await fetchAllPixelEvents();
+    if (!events.length) throw new Error("No placement history found.");
+    evolutionEvents = events;
+    evolutionBounds = { minX: originX, minY: originY, w: gridWidth, h: gridHeight };
+    evolutionDense = new Uint8Array(gridWidth * gridHeight);
+
+    const canvas = document.getElementById("evolutionCanvas");
+    canvas.width = gridWidth * EVOLUTION_CELL_PX;
+    canvas.height = gridHeight * EVOLUTION_CELL_PX;
+
+    const scrubber = document.getElementById("evolutionScrubber");
+    scrubber.max = String(events.length - 1);
+    seekEvolutionTo(0);
+
+    progressEl.style.display = "none";
+    document.getElementById("evolutionPlayer").style.display = "";
+    startEvolutionPlayback();
+  } catch (err) {
+    statusText.textContent = "Failed: " + err.message;
+  }
+}
+document.getElementById("evolutionGenerateBtn").addEventListener("click", generateEvolution);
+document.getElementById("evolutionRegenerateBtn").addEventListener("click", generateEvolution);
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+// Encodes the SAME event sequence already driving the live preview into a
+// real downloadable .gif, using the vendored gifenc (see its own header).
+// Frame count is capped (sampling evenly) rather than one frame per event
+// for boards with a large history -- generate-evolution-gif.py's own
+// one-frame-per-pixel approach is fine for an offline admin tool with no
+// time pressure, but a multi-thousand-frame GIF encoded synchronously in a
+// visitor's own browser tab would both take a long time and produce an
+// unreasonably large file for what's meant to be a quick, shareable clip.
+// Measured live at the full EVOLUTION_CELL_PX (4x/512x512): ~1.2s/frame,
+// so 600 frames would take ~12 minutes -- LZW cost scales with pixel
+// count, not board cells, so this is a real bottleneck, not a fixed cost.
+// 300 frames at a smaller 2x/256x256 (still comfortably larger than the
+// impractical native 128x128) cuts total encode time roughly 8x.
+const EVOLUTION_GIF_MAX_FRAMES = 300;
+const EVOLUTION_GIF_SCALE = 2;
+
+// GIFs carry no "render pixelated at Nx" metadata the way this page's own
+// <canvas> CSS (image-rendering: pixelated) does -- writing the board at
+// its native cell resolution produced a genuinely-valid but impractically
+// tiny 128x128 GIF (confirmed by actually decoding one), unlike the
+// on-screen preview or generate-evolution-gif.py's own output (both
+// upscaled). Replicates each cell into a scale x scale block before
+// handing a frame to the encoder, same idea as that script's own CELL_PX.
+function upscaleForGif(dense, w, h, scale) {
+  const outW = w * scale;
+  const out = new Uint8Array(outW * h * scale);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = dense[y * w + x];
+      for (let dy = 0; dy < scale; dy++) {
+        const rowStart = (y * scale + dy) * outW + x * scale;
+        out.fill(c, rowStart, rowStart + scale);
+      }
+    }
+  }
+  return out;
+}
+
+async function downloadEvolutionGif() {
+  const btn = document.getElementById("evolutionDownloadBtn");
+  const statusEl = document.getElementById("evolutionDownloadStatus");
+  const wasPlaying = evolutionPlaying;
+  stopEvolutionPlayback();
+  btn.disabled = true;
+  statusEl.textContent = "Encoding GIF…";
+  try {
+    await new Promise((r) => setTimeout(r, 0)); // let the "Encoding…" text actually paint before the synchronous work below
+    const { w, h, minX, minY } = evolutionBounds;
+    const gifPalette = paletteColors.map(hexToRgb);
+    const total = evolutionEvents.length;
+    const frameStep = total > EVOLUTION_GIF_MAX_FRAMES ? Math.ceil(total / EVOLUTION_GIF_MAX_FRAMES) : 1;
+
+    const gif = new GIFEncoder();
+    const dense = new Uint8Array(w * h);
+    const scale = EVOLUTION_GIF_SCALE;
+    let framesWritten = 0;
+    for (let i = 0; i < total; i++) {
+      const [x, y, c] = evolutionEvents[i];
+      const lx = x - minX, ly = y - minY;
+      if (lx >= 0 && lx < w && ly >= 0 && ly < h) dense[ly * w + lx] = c;
+      const isLast = i === total - 1;
+      if (i % frameStep !== 0 && !isLast) continue;
+      gif.writeFrame(upscaleForGif(dense, w, h, scale), w * scale, h * scale, {
+        palette: framesWritten === 0 ? gifPalette : undefined,
+        delay: isLast ? 1500 : 40, // linger on the finished board instead of instantly looping
+      });
+      framesWritten++;
+      if (framesWritten % 50 === 0) {
+        statusEl.textContent = `Encoding GIF… frame ${framesWritten}`;
+        await new Promise((r) => setTimeout(r, 0)); // yield so the status text + browser stay responsive during a long encode
+      }
+    }
+    gif.finish();
+
+    const blob = new Blob([gif.bytes()], { type: "image/gif" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "gno-pixels-evolution.gif";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    statusEl.textContent = `Downloaded — ${framesWritten} frames.`;
+  } catch (err) {
+    statusEl.textContent = "Failed: " + err.message;
+  } finally {
+    btn.disabled = false;
+    if (wasPlaying) startEvolutionPlayback();
+  }
+}
+document.getElementById("evolutionDownloadBtn").addEventListener("click", downloadEvolutionGif);
 
 function openAboutModal() {
   document.getElementById("aboutModalBackdrop").style.display = "";
