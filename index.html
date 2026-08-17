@@ -1468,10 +1468,20 @@ async function loadCanvas() {
   const appEl = document.getElementById("app");
   const canvasLoadingEl = document.getElementById("canvasLoading");
   const canvasLoadingText = document.getElementById("canvasLoadingText");
-  const setStep = (msg) => { canvasLoadingText.textContent = msg; };
-  canvasLoadingEl.style.display = "flex";
-  appEl.style.display = "none";
-  setStep("Reading board size…");
+  // deployedOnChain flips to true after the first successful load and
+  // never resets -- exactly the "have we shown the board before" signal
+  // needed here. Without this, pollLive()'s 8s background refresh (see
+  // its own comment below) re-triggered this same spinner+hide-the-board
+  // sequence on every tick, blanking out an already-loaded, perfectly
+  // fine board for no reason -- the spinner is only useful while there's
+  // genuinely nothing to look at yet.
+  const isFirstLoad = deployedOnChain !== true;
+  const setStep = (msg) => { if (isFirstLoad) canvasLoadingText.textContent = msg; };
+  if (isFirstLoad) {
+    canvasLoadingEl.style.display = "flex";
+    appEl.style.display = "none";
+    setStep("Reading board size…");
+  }
   try {
     const boundsRaw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".Bounds()");
     const [minX, maxX, minY, maxY] = parseGnoEvalAllNumbers(boundsRaw);
