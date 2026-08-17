@@ -259,6 +259,25 @@
   .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: live-pulse 2s ease-in-out infinite; }
   @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
+  /* Shown in place of the board while loadCanvas() is working -- the board
+     itself stays display:none until data is ready, and used to leave that
+     whole area blank with only a small header line saying "Loading…" and
+     nothing else, which read as stuck even when it wasn't. */
+  .canvas-loading { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px; min-height: 360px; padding: 40px 20px; }
+  .pixel-spinner { display: grid; grid-template-columns: repeat(3, 16px); grid-template-rows: repeat(3, 16px); gap: 5px; }
+  .pixel-spinner span { width: 16px; height: 16px; border-radius: 3px; opacity: 0.2; animation: pixel-spin 1.35s ease-in-out infinite; }
+  .pixel-spinner span:nth-child(1) { animation-delay: 0.00s; background: #f87171; }
+  .pixel-spinner span:nth-child(2) { animation-delay: 0.075s; background: #fb923c; }
+  .pixel-spinner span:nth-child(3) { animation-delay: 0.15s; background: #facc15; }
+  .pixel-spinner span:nth-child(4) { animation-delay: 0.225s; background: #4ade80; }
+  .pixel-spinner span:nth-child(5) { animation-delay: 0.30s; background: #22d3ee; }
+  .pixel-spinner span:nth-child(6) { animation-delay: 0.375s; background: #60a5fa; }
+  .pixel-spinner span:nth-child(7) { animation-delay: 0.45s; background: #818cf8; }
+  .pixel-spinner span:nth-child(8) { animation-delay: 0.525s; background: #c084fc; }
+  .pixel-spinner span:nth-child(9) { animation-delay: 0.60s; background: #f472b6; }
+  @keyframes pixel-spin { 0%, 100% { opacity: 0.2; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1); } }
+  .canvas-loading-text { color: var(--text-muted); font-size: 0.85rem; min-height: 1.2em; text-align: center; }
+
   footer { text-align: center; margin-top: 3rem; font-size: 0.8rem; color: var(--text-muted); }
   footer a { color: var(--accent); }
 
@@ -434,6 +453,11 @@
 
 <div class="main-column">
 
+<div class="canvas-loading" id="canvasLoading">
+  <div class="pixel-spinner"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+  <p class="canvas-loading-text" id="canvasLoadingText">Reading board size…</p>
+</div>
+
 <div id="app" style="display:none">
   <div class="board-wrap" id="boardWrap"><div class="board" id="board"></div></div>
 
@@ -582,7 +606,7 @@
   <div class="modal" id="evolutionModal">
     <button class="modal-close" id="evolutionModalClose" type="button" title="Close">✕</button>
     <h2>🎬 Board Evolution</h2>
-    <p class="modal-hint">Every pixel, replayed in the exact order it was actually placed — reconstructed live from on-chain history. Nothing is precomputed; this is built fresh each time you generate it.</p>
+    <p class="modal-hint">Every pixel, replayed in the exact order it was actually placed — reconstructed from on-chain history. The first generate fetches everything; after that, this browser caches it and only syncs whatever's new.</p>
 
     <div id="evolutionIdle">
       <button type="button" class="primary-btn" id="evolutionGenerateBtn">Generate animation</button>
@@ -1358,7 +1382,7 @@ function applyPixelWrite(dense, w, h, minX, minY, x, y, colorIndex) {
 // single query from "fine" into "routinely times out", confirmed live
 // while investigating a page-stuck-loading report), grows back after a
 // run of successes.
-async function fetchBoardCallsChunked(func, latestHeight, fromHeight = 0) {
+async function fetchBoardCallsChunked(func, latestHeight, fromHeight = 0, onChunk = () => {}) {
   const calls = [];
   let chunkSize = 50000;
   const minChunk = 500;
@@ -1383,6 +1407,7 @@ async function fetchBoardCallsChunked(func, latestHeight, fromHeight = 0) {
       calls.push({ height: tx.block_height, index: tx.index, func: msg.value.func, args: msg.value.args });
     }
     from = to + 1;
+    onChunk(to);
     consecutiveOk++;
     if (consecutiveOk >= 3 && chunkSize < 50000) {
       chunkSize = Math.min(50000, chunkSize * 2);
@@ -1404,9 +1429,10 @@ async function fetchBoardCallsChunked(func, latestHeight, fromHeight = 0) {
 // to the old full-replay-from-genesis behavior if the backup is missing,
 // unparseable, or stamped for a different realm (e.g. this same page later
 // pointed at a migrated/new pkgPath).
-async function buildSnapshotFromIndexer(w, h, minX, minY) {
+async function buildSnapshotFromIndexer(w, h, minX, minY, onStep = () => {}) {
   const dense = new Array(w * h).fill("0");
   let sinceHeight = 0;
+  onStep("Loading pixel backup…");
   try {
     const res = await fetch("/data/board-snapshot.json", { signal: AbortSignal.timeout(15000) });
     if (res.ok) {
@@ -1422,12 +1448,14 @@ async function buildSnapshotFromIndexer(w, h, minX, minY) {
     // fetch/parse failure -- sinceHeight stays 0, falling through to a full
     // replay from genesis below, same as before this optimization existed
   }
+  onStep(sinceHeight > 0 ? "Syncing recent placements since the last backup…" : "No usable backup — replaying full placement history from the indexer (this can take a while)…");
   // fetchAllPixelEvents (see its own comment, near the Evolution feature
   // below) flattens the same three replay funcs into individual pixel-
   // write events already in correct chronological order -- only state
   // reconstruction needed here, not each individual step, so just apply
   // every event in sequence.
-  for (const [x, y, c] of await fetchAllPixelEvents(sinceHeight)) {
+  const { events } = await fetchAllPixelEvents(sinceHeight, onStep);
+  for (const [x, y, c] of events) {
     applyPixelWrite(dense, w, h, minX, minY, x, y, c);
   }
   return dense.join("");
@@ -1438,12 +1466,19 @@ async function loadCanvas() {
   loadInFlight = true;
   const statusEl = document.getElementById("topStatus");
   const appEl = document.getElementById("app");
+  const canvasLoadingEl = document.getElementById("canvasLoading");
+  const canvasLoadingText = document.getElementById("canvasLoadingText");
+  const setStep = (msg) => { canvasLoadingText.textContent = msg; };
+  canvasLoadingEl.style.display = "flex";
+  appEl.style.display = "none";
+  setStep("Reading board size…");
   try {
     const boundsRaw = await abciQuery("vm/qeval", PIXEL_REALM_PATH + ".Bounds()");
     const [minX, maxX, minY, maxY] = parseGnoEvalAllNumbers(boundsRaw);
     originX = minX; originY = minY;
     const w = maxX - minX + 1, h = maxY - minY + 1;
 
+    setStep("Loading palette & board stats…");
     const [paletteRaw, totalRaw, occupiedRaw, expansionsRaw] = await Promise.all([
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".PaletteCSV()"),
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".TotalPlacements()"),
@@ -1451,10 +1486,11 @@ async function loadCanvas() {
       abciQuery("vm/qeval", PIXEL_REALM_PATH + ".ExpansionsCount()"),
     ]);
     paletteColors = (parseGnoEvalString(paletteRaw) || "").split(",").filter(Boolean);
-    lastSnapshotStr = await buildSnapshotFromIndexer(w, h, minX, minY);
+    lastSnapshotStr = await buildSnapshotFromIndexer(w, h, minX, minY, setStep);
 
     deployedOnChain = true;
     statusEl.style.display = "none";
+    canvasLoadingEl.style.display = "none";
     appEl.style.display = "";
     document.getElementById("controlBar").style.display = "";
 
@@ -1514,6 +1550,7 @@ async function loadCanvas() {
     }
     statusEl.style.display = "";
     statusEl.classList.add("error");
+    canvasLoadingEl.style.display = "none";
   } finally {
     loadInFlight = false;
   }
@@ -2903,10 +2940,14 @@ document.getElementById("leaderboardModalBackdrop").addEventListener("click", (e
 // Same "reconstruct from the indexer, in order, since Snapshot()/Render()
 // both now exceed the query-time gas ceiling on this board" approach as
 // local-deploy/generate-evolution-gif.py, brought client-side and made
-// on-demand/interactive instead of a one-shot admin-console tool. Nothing
-// here is precomputed or cached -- every open of this modal replays real
-// on-chain history fresh, reusing the same chunked, resilient indexer
-// fetch (fetchBoardCallsChunked) the live board itself now uses.
+// on-demand/interactive instead of a one-shot admin-console tool. Unlike
+// the live board (which only needs FINAL state and can use the RPC-based
+// board-snapshot.json backup as a base layer), this needs every individual
+// WRITE in order to animate/GIF it, so that backup can't substitute here --
+// but the full history, once fetched, is cached in localStorage
+// (loadEvolutionCache/saveEvolutionCache below) so re-opening this modal
+// later only fetches whatever's been placed since the last cached height,
+// not the entire history again.
 
 const EVOLUTION_CELL_PX = 4; // matches generate-evolution-gif.py's own CELL_PX
 
@@ -2917,11 +2958,23 @@ const EVOLUTION_CELL_PX = 4; // matches generate-evolution-gif.py's own CELL_PX
 // which only cares about final state and can treat a whole batch as one
 // step). buildSnapshotFromIndexer is rewritten below to build on top of
 // this instead of duplicating the same fetch+flatten logic.
-async function fetchAllPixelEvents(sinceHeight = 0) {
+async function fetchAllPixelEvents(sinceHeight = 0, onStep = () => {}) {
   const { latestBlockHeight } = await indexerGraphqlQuery("query { latestBlockHeight }");
-  if (sinceHeight > latestBlockHeight) return [];
+  if (sinceHeight > latestBlockHeight) return { events: [], latestBlockHeight };
+  const span = latestBlockHeight - sinceHeight + 1;
+  // Each of the 3 replay funcs is chunked and fetched independently
+  // (Promise.all below) and only finishes as a whole once ALL three do --
+  // so the true progress to report is the SLOWEST of the three, not
+  // whichever happens to be furthest ahead at any given moment.
+  const progressByFunc = {};
+  const reportProgress = (func, to) => {
+    progressByFunc[func] = to;
+    const done = Math.min(...INDEXER_REPLAY_FUNCS.map((f) => progressByFunc[f] ?? sinceHeight - 1));
+    const pct = span > 0 ? Math.min(100, Math.max(0, Math.round(((done - sinceHeight + 1) / span) * 100))) : 100;
+    onStep(`${sinceHeight === 0 ? "Replaying full placement history" : "Syncing recent placements"}… ${pct}%`);
+  };
   const perFunc = await Promise.all(
-    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight, sinceHeight))
+    INDEXER_REPLAY_FUNCS.map((func) => fetchBoardCallsChunked(func, latestBlockHeight, sinceHeight, (to) => reportProgress(func, to)))
   );
   const calls = perFunc.flat();
   calls.sort((a, b) => a.height - b.height || a.index - b.index);
@@ -2941,7 +2994,33 @@ async function fetchAllPixelEvents(sinceHeight = 0) {
       events.push([x, y, c]);
     }
   }
-  return events;
+  return { events, latestBlockHeight };
+}
+
+// Full placement history is a few thousand small [x,y,c] triples -- easily
+// within localStorage's per-origin quota, so caching it whole (rather than
+// e.g. IndexedDB) is fine. Keyed/invalidated by pkgPath so this can't ever
+// hand back another realm's events (relevant if this page is later pointed
+// at a migrated/new pkgPath).
+const EVOLUTION_CACHE_KEY = "gnoPixelsEvolutionCache_v1";
+
+function loadEvolutionCache() {
+  try {
+    const cache = JSON.parse(localStorage.getItem(EVOLUTION_CACHE_KEY) || "null");
+    if (!cache || cache.pkgPath !== PIXEL_REALM_PATH || !Array.isArray(cache.events) || !Number.isFinite(cache.atHeight)) return null;
+    return cache;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveEvolutionCache(atHeight, events) {
+  try {
+    localStorage.setItem(EVOLUTION_CACHE_KEY, JSON.stringify({ pkgPath: PIXEL_REALM_PATH, atHeight, events }));
+  } catch (err) {
+    // Quota exceeded or storage unavailable (e.g. private browsing) --
+    // caching is purely a speed optimization, safe to just skip it.
+  }
 }
 
 let evolutionEvents = null; // [[x, y, c], ...] in chronological order
@@ -3073,15 +3152,24 @@ async function generateEvolution() {
   const progressEl = document.getElementById("evolutionProgress");
   const statusText = document.getElementById("evolutionStatusText");
   progressEl.style.display = "";
-  statusText.textContent = "Fetching placement history from the indexer…";
   try {
     // Reuses the live board's own already-resolved bounds/palette
     // (originX/originY/gridWidth/gridHeight/paletteColors) rather than
     // re-fetching them -- the nav button that opens this modal lives in
     // the same page as the already-loaded board, so these are populated
     // by the time anyone can reach here.
-    const events = await fetchAllPixelEvents();
+    const cache = loadEvolutionCache();
+    const onStep = (msg) => { statusText.textContent = msg; };
+    if (cache) {
+      onStep(`Found ${cache.events.length} cached placement(s) from last visit — syncing what's new…`);
+    } else {
+      onStep("First time here — fetching the full placement history from the indexer (will be cached for next time)…");
+    }
+    const sinceHeight = cache ? cache.atHeight + 1 : 0;
+    const { events: newEvents, latestBlockHeight } = await fetchAllPixelEvents(sinceHeight, onStep);
+    const events = cache ? cache.events.concat(newEvents) : newEvents;
     if (!events.length) throw new Error("No placement history found.");
+    saveEvolutionCache(latestBlockHeight, events);
     evolutionEvents = events;
     evolutionBounds = { minX: originX, minY: originY, w: gridWidth, h: gridHeight };
     evolutionDense = new Uint8Array(gridWidth * gridHeight);
