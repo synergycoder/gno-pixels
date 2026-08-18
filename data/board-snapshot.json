@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-17T08:35:54.272Z",
-  "atHeight": 222930,
+  "generatedAt": "2026-08-18T08:42:31.936Z",
+  "atHeight": 246089,
   "pkgPath": "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels",
   "bounds": {
     "minX": -32,
@@ -17951,6 +17951,13 @@
       "c": 3
     },
     {
+      "x": 56,
+      "y": -13,
+      "placer": "g1awav8afwjqy0f8uzcqek8pd0er7d9jgr08rkkv",
+      "height": 223858,
+      "c": 1
+    },
+    {
       "x": 57,
       "y": -29,
       "placer": "g1y9a5mwfjx360x2wd92fcdlhcdcpua0hhh6le83",
@@ -19790,6 +19797,13 @@
       "placer": "g1w93f099t4pp9jamyghp88p60fvkg39dxz2qzrc",
       "height": 50876,
       "c": 8
+    },
+    {
+      "x": 67,
+      "y": -11,
+      "placer": "g1awav8afwjqy0f8uzcqek8pd0er7d9jgr08rkkv",
+      "height": 223865,
+      "c": 1
     },
     {
       "x": 67,
