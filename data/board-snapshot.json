@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-18T08:42:31.936Z",
-  "atHeight": 246089,
+  "generatedAt": "2026-08-19T08:30:25.963Z",
+  "atHeight": 269824,
   "pkgPath": "gno.land/r/g188mapat33awn7r9uk08l0jc9my0n07fpmspxel/pixels",
   "bounds": {
     "minX": -32,
@@ -23469,9 +23469,9 @@
     {
       "x": 80,
       "y": 16,
-      "placer": "g15qnf6turgmunhkvxrx0skvgw3apcwdp86tvnds",
-      "height": 126488,
-      "c": 5
+      "placer": "g1k3rgm46pgh7207tpf2mcnmyccsvlpt56gnp79l",
+      "height": 265754,
+      "c": 3
     },
     {
       "x": 80,
